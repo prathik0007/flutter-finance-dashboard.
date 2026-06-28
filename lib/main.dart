@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert'; // Needed to convert your list into a JSON string for storage
+// Needed to convert your list into a JSON string for storage
 
 void main() {
   runApp(const ProviderScope(child: FinanceApp()));
@@ -249,17 +248,39 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               itemCount: transactions.length,
               itemBuilder: (context, index) {
                 final tx = transactions[index];
+                final smartCategory = getSmartCategory(tx["merchant"] as String);
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  elevation: 1,
+                  elevation: 2,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: Colors.teal.shade50,
-                      child: const Icon(Icons.payment, color: Colors.teal),
+                      backgroundColor: smartCategory.color.withValues(alpha: 0.15),
+                      child: Icon(smartCategory.icon, color: smartCategory.color),
                     ),
-                    title: Text(tx["merchant"], style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(tx["date"]),
+                    title: Text(
+                      tx["merchant"],
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: smartCategory.color.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          smartCategory.name,
+                          style: TextStyle(
+                            color: smartCategory.color,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                     trailing: Text(
                       '- ₹${tx["amount"].toStringAsFixed(2)}',
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.redAccent),
@@ -501,4 +522,90 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       ),
     );
   }
+}
+
+TransactionCategory getSmartCategory(String merchantName) {
+  final name = merchantName.toLowerCase().trim();
+
+  if (name.contains('zomato') ||
+      name.contains('swiggy') ||
+      name.contains('restaurant') ||
+      name.contains('food') ||
+      name.contains('mcdonald') ||
+      name.contains('kfc') ||
+      name.contains('dominos')) {
+    return TransactionCategory(
+      name: 'Food',
+      icon: Icons.fastfood_rounded,
+      color: Colors.orange,
+    );
+  }
+
+  if (name.contains('starbucks') ||
+      name.contains('coffee') ||
+      name.contains('cafe') ||
+      name.contains('chai')) {
+    return TransactionCategory(
+      name: 'Café',
+      icon: Icons.coffee_rounded,
+      color: Colors.brown,
+    );
+  }
+
+  if (name.contains('uber') ||
+      name.contains('ola') ||
+      name.contains('auto') ||
+      name.contains('metro') ||
+      name.contains('petrol') ||
+      name.contains('fuel')) {
+    return TransactionCategory(
+      name: 'Transport',
+      icon: Icons.directions_car_rounded,
+      color: Colors.blue,
+    );
+  }
+
+  if (name.contains('netflix') ||
+      name.contains('spotify') ||
+      name.contains('prime') ||
+      name.contains('youtube') ||
+      name.contains('hotstar') ||
+      name.contains('game')) {
+    return TransactionCategory(
+      name: 'Entertainment',
+      icon: Icons.movie_creation_rounded,
+      color: Colors.purple,
+    );
+  }
+
+  if (name.contains('amazon') ||
+      name.contains('flipkart') ||
+      name.contains('groceries') ||
+      name.contains('supermarket') ||
+      name.contains('myntra') ||
+      name.contains('mall')) {
+    return TransactionCategory(
+      name: 'Shopping',
+      icon: Icons.shopping_bag_rounded,
+      color: Colors.pink,
+    );
+  }
+
+  return TransactionCategory(
+    name: 'Misc',
+    icon: Icons.label_rounded,
+    color: Colors.blueGrey,
+  );
+}
+
+class TransactionCategory {
+  final String name;
+  final IconData icon;
+  final Color color;
+
+  TransactionCategory({
+    required this.name,
+    required this.icon,
+    required this.color,
+  });
 }
