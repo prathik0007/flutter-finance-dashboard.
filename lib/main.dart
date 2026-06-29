@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 // Needed to convert your list into a JSON string for storage
 
 void main() {
@@ -110,6 +111,9 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   final double totalIncome = 50000.00;
+  final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _isListening = false;
+  String _voiceWords = "";
 
   List<PieChartSectionData> getShowingSections() {
     final transactions = ref.watch(transactionProvider);
@@ -230,6 +234,64 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
   }
 
+  void parseAndAddVoiceTransaction(String text) {
+    final lowerText = text.toLowerCase();
+    double? parsedAmount;
+    String parsedMerchant = "Unknown";
+
+    final amountRegex = RegExp(r'\b\d+(?:\.\d+)?\b');
+    final matches = amountRegex.allMatches(lowerText);
+    if (matches.isNotEmpty) {
+      parsedAmount = double.tryParse(matches.first.group(0) ?? '');
+    }
+
+    final merchantRegex = RegExp(r'\b(?:at|to|on|from)\s+([a-zA-Z0-9\s]+)');
+    final merchantMatch = merchantRegex.firstMatch(lowerText);
+    if (merchantMatch != null && merchantMatch.groupCount >= 1) {
+      parsedMerchant = merchantMatch.group(1)!.trim();
+      parsedMerchant = parsedMerchant.split(' ').map((word) {
+        if (word.isEmpty) return word;
+        return word[0].toUpperCase() + word.substring(1);
+      }).join(' ');
+    }
+
+    if (parsedAmount != null) {
+      ref.read(transactionProvider.notifier).addTransaction(
+            parsedMerchant == "Unknown" ? "Voice Transaction" : parsedMerchant,
+            parsedAmount,
+          );
+    }
+  }
+
+  void _listen() async {
+    if (!_isListening) {
+      final available = await _speech.initialize(
+        onStatus: (val) => debugPrint('Speech status: $val'),
+        onError: (val) => debugPrint('Speech error: $val'),
+      );
+      if (available) {
+        setState(() => _isListening = true);
+        _speech.listen(
+          onResult: (val) {
+            setState(() {
+              _voiceWords = val.recognizedWords;
+              if (val.finalResult) {
+                _isListening = false;
+              }
+            });
+
+            if (val.finalResult) {
+              parseAndAddVoiceTransaction(_voiceWords);
+            }
+          },
+        );
+      }
+    } else {
+      setState(() => _isListening = false);
+      _speech.stop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final transactions = ref.watch(transactionProvider);
@@ -267,7 +329,19 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Total Balance', style: TextStyle(color: Colors.white70, fontSize: 16)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Total Balance', style: TextStyle(color: Colors.white70, fontSize: 16)),
+                    IconButton(
+                      icon: Icon(
+                        _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                        color: _isListening ? Colors.red : Colors.white,
+                      ),
+                      onPressed: _listen,
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 4),
                 Text(
                   '₹${currentBalance.toStringAsFixed(2)}',
@@ -402,10 +476,26 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddTransactionDialog,
-        backgroundColor: Colors.teal,
-        child: const Icon(Icons.add, color: Colors.white),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FloatingActionButton(
+            heroTag: 'voiceTransaction',
+            onPressed: _listen,
+            backgroundColor: _isListening ? Colors.red : Colors.blue,
+            child: Icon(
+              _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'addTransaction',
+            onPressed: _showAddTransactionDialog,
+            backgroundColor: Colors.teal,
+            child: const Icon(Icons.add, color: Colors.white),
+          ),
+        ],
       ),
     );
   }
