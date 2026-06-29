@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:universal_html/html.dart' as html;
 // Needed to convert your list into a JSON string for storage
 
 void main() {
@@ -190,6 +193,103 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         ],
       ),
     );
+  }
+
+  String _escapeHtml(String value) {
+    return const HtmlEscape().convert(value);
+  }
+
+  void _exportToCSV() {
+    final transactions = ref.read(transactionProvider);
+
+    // 1. Build the CSV contents as plain text strings manually
+    final StringBuffer csvBuilder = StringBuffer();
+
+    // Add headers
+    csvBuilder.writeln("Date,Merchant/Description,Category,Amount (INR)");
+
+    // 2. Loop through your items and map them down line by line
+    for (final tx in transactions) {
+      // Safely extract values from your transaction object or map
+      final String date = tx['date']?.toString().split(' ')[0] ?? '';
+      final String merchant =
+          tx['merchant']?.toString().replaceAll(',', '') ?? 'Unknown';
+
+      // Get the category name using your existing helper function
+      final String categoryName = getSmartCategory(merchant).name;
+      final String amount = (tx['amount'] ?? 0).toString();
+
+      // Write a clean, comma-separated row line
+      csvBuilder.writeln("$date,$merchant,$categoryName,$amount");
+    }
+
+    // 3. Trigger the browser's download window natively using universal_html
+    final blob = html.Blob([csvBuilder.toString()], 'text/csv;charset=utf-8');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+
+    html.AnchorElement(href: url)
+      ..setAttribute("download",
+          "finance_report_${DateTime.now().millisecondsSinceEpoch}.csv")
+      ..click();
+
+    html.Url.revokeObjectUrl(url);
+  }
+
+  void _exportToPDF() {
+    final transactions = ref.read(transactionProvider);
+    final totalSpent = transactions.fold<double>(
+      0,
+      (sum, item) => sum + (item['amount'] as num).toDouble(),
+    );
+
+    final tableRows = transactions.map((tx) {
+      final merchant = tx['merchant'] as String;
+      final amount = (tx['amount'] as num).toDouble();
+      final cat = getSmartCategory(merchant);
+      return '''
+      <tr>
+        <td>${_escapeHtml(tx['date'].toString())}</td>
+        <td><strong>${_escapeHtml(merchant)}</strong></td>
+        <td><span style="color: grey;">${_escapeHtml(cat.name)}</span></td>
+        <td style="text-align: right; color: #d32f2f;">- ₹${amount.toStringAsFixed(2)}</td>
+      </tr>
+    ''';
+    }).join('');
+
+    final htmlContent = '''
+    <html>
+    <head>
+      <title>Financial Ledger Summary Report</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 30px; color: #333; }
+        .header { border-bottom: 2px solid #009688; padding-bottom: 12px; margin-bottom: 24px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 12px; border-bottom: 1px solid #ddd; text-align: left; }
+        th { background-color: #f5f5f5; color: #009688; }
+        .total-box { margin-top: 30px; text-align: right; font-size: 1.3em; font-weight: bold; }
+      </style>
+    </head>
+    <body>
+      <div class="header">
+        <h2>AI Finance Dashboard - Ledger Report</h2>
+        <p>Generated on: ${DateTime.now().toString().split('.')[0]}</p>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Merchant</th><th>Category</th><th style="text-align: right;">Amount</th></tr>
+        </thead>
+        <tbody>$tableRows</tbody>
+      </table>
+      <div class="total-box">Aggregate Period Expenses: ₹${totalSpent.toStringAsFixed(2)}</div>
+      <script>window.print();</script>
+    </body>
+    </html>
+  ''';
+
+    final blob = html.Blob([htmlContent], 'text/html');
+    final url = html.Url.createObjectUrlFromBlob(blob);
+    html.window.open(url, '_blank');
+    html.Url.revokeObjectUrl(url);
   }
 
   void _showAddTransactionDialog() {
@@ -420,11 +520,34 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Recent Transactions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Recent Transactions',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.table_view_rounded, color: Colors.green),
+                      tooltip: 'Export CSV Spreadsheet',
+                      onPressed: _exportToCSV,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.redAccent),
+                      tooltip: 'Print Summary PDF',
+                      onPressed: _exportToPDF,
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           Expanded(
