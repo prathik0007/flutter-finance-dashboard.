@@ -318,7 +318,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
     try {
       const String geminiApiKey =
-          "AQ.Ab8RN6JWjPUOgkVhqXCBLQ3P3douCH0kLEZcZ-vKOL_PV3Xskw";
+          "AQ.Ab8RN6KQBDU8bGGrhbJoCKjYVdC-_9a3939sduqfkXMheSTmuA";
       final model = GenerativeModel(
         model: 'gemini-1.5-flash',
         apiKey: geminiApiKey,
