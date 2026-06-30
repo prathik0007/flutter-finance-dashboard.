@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:universal_html/html.dart' as html;
@@ -319,22 +319,19 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     try {
       const String geminiApiKey =
           "AQ.Ab8RN6KQBDU8bGGrhbJoCKjYVdC-_9a3939sduqfkXMheSTmuA";
-      final model = GenerativeModel(
-        model: 'gemini-1.5-flash',
-        apiKey: geminiApiKey,
+      final url = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey',
       );
       final transactions = ref.read(transactionProvider);
-      final dataReport = StringBuffer()
-        ..writeln("Current User Financial Context Breakdown:");
+      final dataReport = StringBuffer();
 
       categoryBudgets.forEach((category, budget) {
         final spent = _getCategoryTotal(category);
         dataReport.writeln(
-          "- $category: Spent ₹${spent.toStringAsFixed(0)} out of a budget of ₹${budget.toStringAsFixed(0)}.",
+          "- $category: Spent ₹$spent out of a budget of ₹$budget.",
         );
       });
 
-      dataReport.writeln("\nRecent Itemized Transactions:");
       for (final tx in transactions.take(5)) {
         dataReport.writeln(
           "- ${tx['merchant']}: ₹${tx['amount']} on ${tx['date']?.toString().split(' ')[0]}",
@@ -351,19 +348,43 @@ Data:
 ${dataReport.toString()}
 """;
 
-      final content = [Content.text(prompt)];
-      final response = await model.generateContent(content);
+      final Map<String, dynamic> requestBody = {
+        "contents": [
+          {
+            "parts": [
+              {"text": prompt},
+            ],
+          },
+        ],
+      };
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
 
       if (!mounted) return;
-      setState(() {
-        aiCoachInsight = response.text ?? "Couldn't parse a response. Try again!";
-        isAiLoading = false;
-      });
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final String aiText =
+            responseData['candidates'][0]['content']['parts'][0]['text'];
+
+        setState(() {
+          aiCoachInsight = aiText.trim();
+          isAiLoading = false;
+        });
+      } else {
+        setState(() {
+          aiCoachInsight =
+              "Server returned error: ${response.statusCode}\nDetails: ${response.body}";
+          isAiLoading = false;
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        aiCoachInsight =
-            "Error talking to Gemini. Please verify your API Key context!\nDetails: $e";
+        aiCoachInsight = "Connection error occurred: $e";
         isAiLoading = false;
       });
     }
@@ -1027,8 +1048,6 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   
   // 1. Added State Variables
   bool _isLoading = false;
-  final String _geminiApiKey = "AQ.Ab8RN6INTw-7f7iBtfGlu-JCEfv_YKHSbYnyqKPAEo5H8t7raA";
-
   final List<Map<String, String>> _messages = [
     {
       "sender": "ai",
@@ -1037,7 +1056,7 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   ];
 
   // 2. The New Asynchronous Gemini Send Message Function
-  void _sendMessage() async {
+  Future<void> _sendMessage() async {
     final query = _messageController.text.trim();
     if (query.isEmpty || _isLoading) return;
 
@@ -1052,9 +1071,10 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
    try {
       // 🟢 CHANGE THIS SPECIFIC BLOCK:
-      final model = GenerativeModel(
-        model: 'models/gemini-3-flash-preview', // Updated to match your AI Studio panel
-        apiKey: _geminiApiKey,
+      const String geminiApiKey =
+          "AQ.Ab8RN6KQBDU8bGGrhbJoCKjYVdC-_9a3939sduqfkXMheSTmuA";
+      final url = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey',
       );
       // The rest of your code (double totalExpenses = ...) stays exactly the same!
 
@@ -1073,15 +1093,37 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
       
       transactionContext += "\nAnswer the user's question accurately using ONLY the structured financial data provided above. Be concise and conversational. User question: $query";
 
-      final content = [Content.text(transactionContext)];
-      final response = await model.generateContent(content);
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": [
+                {"text": transactionContext}
+              ]
+            }
+          ]
+        }),
+      );
 
-      setState(() {
-        _messages.add({
-          "sender": "ai",
-          "text": response.text ?? "I processed that, but couldn't formulate a text response."
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final String replyText =
+            responseData['candidates'][0]['content']['parts'][0]['text'];
+
+        setState(() {
+          _messages.add({"sender": "ai", "text": replyText.trim()});
         });
-      });
+      } else {
+        setState(() {
+          _messages.add({
+            "sender": "ai",
+            "text": "Chat Error: ${response.statusCode}\nDetails: ${response.body}"
+          });
+        });
+      }
     } catch (e) {
       setState(() {
         _messages.add({
