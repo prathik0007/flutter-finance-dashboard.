@@ -348,12 +348,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final visualPercent = percent > 1.0 ? 1.0 : percent;
     final Color textColor = isDarkMode ? Colors.white : Colors.black87;
 
-    Color progressColor = Colors.teal;
-    if (percent >= 0.85) {
-      progressColor = Colors.redAccent;
-    } else if (percent >= 0.50) {
-      progressColor = Colors.orangeAccent;
-    }
+    final Color progressColor =
+        percent > 0.80 ? Colors.red : Colors.teal;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
