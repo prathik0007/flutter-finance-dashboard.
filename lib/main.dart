@@ -37,8 +37,12 @@ class FinanceApp extends StatelessWidget {
 // --- APP SERVICES LAYER (RIVERPOD NOTIFIER) ---
 
 class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
+  static const String _savedTransactionsKey = 'saved_transactions';
+  bool _hasHydrated = false;
+
   @override
   List<Map<String, dynamic>> build() {
+    _loadDataFromLocal();
     return [
       {"merchant": "Starbucks Coffee", "amount": 180.00, "date": "Today"},
       {"merchant": "Netflix Subscription", "amount": 649.00, "date": "Yesterday"},
@@ -46,6 +50,71 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
       {"merchant": "Zomato Delivery", "amount": 420.00, "date": "22 June"},
       {"merchant": "Petrol Pump", "amount": 1000.00, "date": "21 June"},
     ];
+  }
+
+  Future<void> hydrateFromLocal() async {
+    await _loadDataFromLocal();
+  }
+
+  Future<void> _saveDataToLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final payload = jsonEncode(
+        state
+            .map(
+              (tx) => {
+                'merchant': tx['merchant']?.toString() ?? 'Unknown Merchant',
+                'amount': (tx['amount'] as num?)?.toDouble() ?? 0.0,
+                'date': tx['date']?.toString() ?? DateTime.now().toString(),
+                if (tx['category'] != null)
+                  'category': tx['category']?.toString(),
+              },
+            )
+            .toList(),
+      );
+
+      await prefs.setString(_savedTransactionsKey, payload);
+    } catch (e) {
+      debugPrint('Save transactions error: $e');
+    }
+  }
+
+  Future<void> _loadDataFromLocal() async {
+    if (_hasHydrated) return;
+    _hasHydrated = true;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_savedTransactionsKey);
+      if (raw == null || raw.trim().isEmpty) return;
+
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+
+      final loaded = <Map<String, dynamic>>[];
+      for (final item in decoded) {
+        if (item is! Map) continue;
+
+        final merchant = item['merchant']?.toString() ?? 'Unknown Merchant';
+        final amountValue = item['amount'];
+        final amount = amountValue is num
+            ? amountValue.toDouble()
+            : double.tryParse(amountValue?.toString() ?? '0') ?? 0.0;
+        final date = item['date']?.toString() ?? DateTime.now().toString();
+        final category = item['category']?.toString();
+
+        loaded.add({
+          'merchant': merchant,
+          'amount': amount,
+          'date': date,
+          if (category != null && category.isNotEmpty) 'category': category,
+        });
+      }
+
+      state = loaded;
+    } catch (e) {
+      debugPrint('Load transactions error: $e');
+    }
   }
 
   void addTransaction(
@@ -59,10 +128,12 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
         "merchant": merchant,
         "amount": amount,
         "date": date ?? "Just Now",
-        "category": ?category,
+        if (category != null) "category": category,
       },
       ...state,
     ];
+
+    _saveDataToLocal();
   }
 }
 
@@ -193,6 +264,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   @override
   void initState() {
     super.initState();
+    _hydrateTransactionsOnStartup();
     final existingExpenses = ref.read(transactionProvider).fold<double>(
       0,
       (sum, item) => sum + (item['amount'] as num).toDouble(),
@@ -205,6 +277,20 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       setState(() {
         _transactionSearchQuery = currentQuery;
       });
+    });
+  }
+
+  Future<void> _hydrateTransactionsOnStartup() async {
+    await ref.read(transactionProvider.notifier).hydrateFromLocal();
+    if (!mounted) return;
+
+    final hydratedExpenses = ref.read(transactionProvider).fold<double>(
+      0,
+      (sum, item) => sum + (item['amount'] as num).toDouble(),
+    );
+
+    setState(() {
+      _remainingBalance = totalIncome - hydratedExpenses;
     });
   }
 
