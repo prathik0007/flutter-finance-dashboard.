@@ -48,12 +48,17 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
     ];
   }
 
-  void addTransaction(String merchant, double amount, {String? category}) {
+  void addTransaction(
+    String merchant,
+    double amount, {
+    String? category,
+    String? date,
+  }) {
     state = [
       {
         "merchant": merchant,
         "amount": amount,
-        "date": "Just Now",
+        "date": date ?? "Just Now",
         if (category != null) "category": category,
       },
       ...state,
@@ -657,17 +662,28 @@ ${dataReport.toString()}
             responseData['candidates'][0]['content']['parts'][0]['text']
                 .toString();
         final extractedData = jsonDecode(rawJsonText.trim());
-        final amount = extractedData['amount'];
-        final merchant = extractedData['merchant']?.toString() ?? 'Unknown Merchant';
+        final merchantName =
+            extractedData['merchant']?.toString() ?? 'Unknown Merchant';
+        final amountValue = extractedData['amount'];
+        final parsedAmount =
+            amountValue is num ? amountValue.toDouble() : 0.0;
+        final rawCategory = extractedData['category']?.toString() ?? '';
         final category = _normalizeCategoryLabel(
-          extractedData['category']?.toString() ?? '',
+          rawCategory,
         );
 
-        _recordTransaction(
-          merchant,
-          amount is num ? amount.toDouble() : 0.0,
-          category: category.isEmpty ? null : category,
-        );
+        final transactionDate = DateTime.now().toString();
+
+        ref.read(transactionProvider.notifier).addTransaction(
+              merchantName,
+              parsedAmount,
+              category: category.isEmpty ? null : category,
+              date: transactionDate,
+            );
+
+        setState(() {
+          _remainingBalance -= parsedAmount;
+        });
 
         setState(() {
           isScanLoading = false;
