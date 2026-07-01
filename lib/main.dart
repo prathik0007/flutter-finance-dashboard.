@@ -966,40 +966,62 @@ ${dataReport.toString()}
     return const HtmlEscape().convert(value);
   }
 
-  void _exportToCSV() {
+  Future<void> _exportToCSV() async {
     final transactions = ref.read(transactionProvider);
 
-    // 1. Build the CSV contents as plain text strings manually
-    final StringBuffer csvBuilder = StringBuffer();
+    try {
+      final StringBuffer csvBuilder = StringBuffer();
+      csvBuilder.writeln('Date,Merchant,Category,Amount');
 
-    // Add headers
-    csvBuilder.writeln("Date,Merchant/Description,Category,Amount (INR)");
+      for (final tx in transactions) {
+        final date = tx['date']?.toString().split(' ').first ?? '';
+        final merchant = tx['merchant']?.toString() ?? 'Unknown Merchant';
+        final storedCategory = tx['category']?.toString();
+        final categoryName = _normalizeCategoryLabel(
+          storedCategory == null || storedCategory.trim().isEmpty
+              ? getSmartCategory(merchant).name
+              : storedCategory,
+        );
+        final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
 
-    // 2. Loop through your items and map them down line by line
-    for (final tx in transactions) {
-      // Safely extract values from your transaction object or map
-      final String date = tx['date']?.toString().split(' ')[0] ?? '';
-      final String merchant =
-          tx['merchant']?.toString().replaceAll(',', '') ?? 'Unknown';
+        final safeDate = '"${date.replaceAll('"', '""')}"';
+        final safeMerchant = '"${merchant.replaceAll('"', '""')}"';
+        final safeCategory = '"${categoryName.replaceAll('"', '""')}"';
+        final safeAmount = amount.toStringAsFixed(2);
 
-      // Get the category name using your existing helper function
-      final String categoryName = getSmartCategory(merchant).name;
-      final String amount = (tx['amount'] ?? 0).toString();
+        csvBuilder.writeln('$safeDate,$safeMerchant,$safeCategory,$safeAmount');
+      }
 
-      // Write a clean, comma-separated row line
-      csvBuilder.writeln("$date,$merchant,$categoryName,$amount");
+      final blob = html.Blob([csvBuilder.toString()], 'text/csv;charset=utf-8');
+      final url = html.Url.createObjectUrlFromBlob(blob);
+
+      html.AnchorElement(href: url)
+        ..setAttribute(
+          'download',
+          'finance_report_${DateTime.now().millisecondsSinceEpoch}.csv',
+        )
+        ..click();
+
+      html.Url.revokeObjectUrl(url);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('CSV export started. Check your downloads.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      debugPrint('CSV export error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Unable to export CSV right now: $e'),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
-
-    // 3. Trigger the browser's download window natively using universal_html
-    final blob = html.Blob([csvBuilder.toString()], 'text/csv;charset=utf-8');
-    final url = html.Url.createObjectUrlFromBlob(blob);
-
-    html.AnchorElement(href: url)
-      ..setAttribute("download",
-          "finance_report_${DateTime.now().millisecondsSinceEpoch}.csv")
-      ..click();
-
-    html.Url.revokeObjectUrl(url);
   }
 
   void _exportToPDF() {
@@ -1356,6 +1378,29 @@ ${dataReport.toString()}
             ),
           ),
           _buildAICoachCard(cardColor, textColor),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _exportToCSV,
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Export Analytics Report'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isDarkMode ? Colors.teal[600] : Colors.teal,
+                  foregroundColor: Colors.white,
+                  elevation: 1,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 14,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
           _buildExpenseTrendChart(cardColor, textColor),
           _buildAnalyticsInsightCard(cardColor, textColor),
