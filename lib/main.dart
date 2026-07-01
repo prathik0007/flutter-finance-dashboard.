@@ -1,15 +1,19 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:universal_html/html.dart' as html;
 // Needed to convert your list into a JSON string for storage
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   runApp(const ProviderScope(child: FinanceApp()));
 }
 
@@ -56,6 +60,7 @@ final transactionProvider = NotifierProvider<TransactionNotifier, List<Map<Strin
   return TransactionNotifier();
 });
 
+String get _stableApiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
 
 // --- MAIN NAVIGATION HOST ---
 
@@ -125,6 +130,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   String aiCoachInsight =
       "Tap the refresh icon to get custom financial insights from Gemini.";
   bool isAiLoading = false;
+  bool isScanLoading = false;
   final Map<String, double> categoryBudgets = {
     'Food': 5000.0,
     'Café': 2000.0,
@@ -317,10 +323,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     });
 
     try {
-      const String geminiApiKey =
-          "AQ.Ab8RN6KQBDU8bGGrhbJoCKjYVdC-_9a3939sduqfkXMheSTmuA";
       final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_stableApiKey',
       );
       final transactions = ref.read(transactionProvider);
       final dataReport = StringBuffer();
@@ -348,20 +352,18 @@ Data:
 ${dataReport.toString()}
 """;
 
-      final Map<String, dynamic> requestBody = {
-        "contents": [
-          {
-            "parts": [
-              {"text": prompt},
-            ],
-          },
-        ],
-      };
-
       final response = await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": [
+                {"text": prompt}
+              ]
+            }
+          ]
+        }),
       );
 
       if (!mounted) return;
@@ -377,7 +379,7 @@ ${dataReport.toString()}
       } else {
         setState(() {
           aiCoachInsight =
-              "Server returned error: ${response.statusCode}\nDetails: ${response.body}";
+              "Error: ${response.statusCode}\nDetails: ${response.body}";
           isAiLoading = false;
         });
       }
@@ -467,6 +469,86 @@ ${dataReport.toString()}
         ),
       ),
     );
+  }
+
+  Future<void> _scanReceiptWithAI() async {
+    final picker = ImagePicker();
+    final photo = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 80,
+    );
+
+    if (photo == null) return;
+
+    setState(() {
+      isScanLoading = true;
+    });
+
+    try {
+      final imageBytes = await photo.readAsBytes();
+      final base64Image = base64Encode(imageBytes);
+
+      final url = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_stableApiKey',
+      );
+
+      final Map<String, dynamic> requestBody = {
+        "contents": [
+          {
+            "parts": [
+              {
+                "text":
+                    "Analyze this receipt image. Extract the merchant name, the total amount spent, and the category (e.g., Food, Cafe, Utilities, Transport, Entertainment). Respond ONLY with a valid, raw JSON object exactly like this: {\"merchant\": \"Name\", \"amount\": 0.0, \"category\": \"Category\"}. Do not wrap it in markdown code blocks."
+              },
+              {
+                "inlineData": {
+                  "mimeType": "image/jpeg",
+                  "data": base64Image,
+                }
+              }
+            ]
+          }
+        ]
+      };
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(requestBody),
+      );
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final rawJsonText =
+            responseData['candidates'][0]['content']['parts'][0]['text']
+                .toString();
+        final extractedData = jsonDecode(rawJsonText.trim());
+        final amount = extractedData['amount'];
+
+        ref.read(transactionProvider.notifier).addTransaction(
+              extractedData['merchant']?.toString() ?? 'Unknown Merchant',
+              amount is num ? amount.toDouble() : 0.0,
+            );
+
+        setState(() {
+          isScanLoading = false;
+        });
+
+        _fetchAICoachInsight();
+      } else {
+        debugPrint("OCR Scan Failed: ${response.body}");
+        setState(() {
+          isScanLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("OCR Error: $e");
+      if (!mounted) return;
+      setState(() {
+        isScanLoading = false;
+      });
+    }
   }
 
   String _escapeHtml(String value) {
@@ -739,7 +821,7 @@ ${dataReport.toString()}
       return _buildLockScreen();
     }
 
-    final transactions = ref.read(transactionProvider);
+    final transactions = ref.watch(transactionProvider);
     double totalExpenses = transactions.fold(0.0, (sum, item) => sum + item["amount"]);
     double currentBalance = totalIncome - totalExpenses;
     final cardColor = isDarkMode ? Colors.grey[850]! : Colors.white;
@@ -1017,6 +1099,24 @@ ${dataReport.toString()}
           ),
           const SizedBox(height: 12),
           FloatingActionButton(
+            heroTag: 'scanReceipt',
+            onPressed: isScanLoading ? null : _scanReceiptWithAI,
+            backgroundColor: Colors.deepPurple,
+            child: isScanLoading
+                ? const Center(
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
+                    ),
+                  )
+                : const Icon(Icons.camera_alt, color: Colors.white),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
             heroTag: 'addTransaction',
             onPressed: _showAddTransactionDialog,
             backgroundColor: Colors.teal,
@@ -1048,12 +1148,93 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   
   // 1. Added State Variables
   bool _isLoading = false;
+  final Map<String, double> categoryBudgets = {
+    'Food': 5000.0,
+    'Caf\u00e9': 2000.0,
+    'Transport': 3000.0,
+    'Entertainment': 4000.0,
+    'Shopping': 6000.0,
+  };
   final List<Map<String, String>> _messages = [
     {
       "sender": "ai",
       "text": "Hello! I am your AI Finance Assistant. Ask me anything about your expenses or dynamic balance!"
     }
   ];
+
+  double _getCategoryTotal(String categoryName) {
+    double total = 0.0;
+    final transactions = ref.read(transactionProvider);
+
+    for (final tx in transactions) {
+      final merchant = tx['merchant'] ?? '';
+      final cat = getSmartCategory(merchant.toString());
+      if (cat.name == categoryName) {
+        final amt = tx['amount'] ?? 0;
+        total += (amt is num) ? amt.toDouble() : 0.0;
+      }
+    }
+
+    return total;
+  }
+
+  Future<void> _sendMessageToGemini(String text) async {
+    if (text.trim().isEmpty) return;
+
+    try {
+      final url = Uri.parse(
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_stableApiKey',
+      );
+
+      StringBuffer contextReport = StringBuffer();
+      categoryBudgets.forEach((category, budget) {
+        double spent = _getCategoryTotal(category);
+        contextReport.writeln(
+          "- $category: Spent ₹$spent out of a budget of ₹$budget.",
+        );
+      });
+
+      final prompt = """
+You are a helpful personal finance chat assistant inside a dashboard app.
+Answer the user's question briefly based on their data.
+
+Data:
+${contextReport.toString()}
+
+Question: $text
+""";
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "contents": [
+            {
+              "parts": [
+                {"text": prompt}
+              ]
+            }
+          ]
+        }),
+      );
+
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        final String replyText =
+            responseData['candidates'][0]['content']['parts'][0]['text'];
+
+        setState(() {
+          _messages.add({'sender': 'user', 'text': text});
+          _messages.add({"sender": "ai", "text": replyText.trim()});
+        });
+      } else {
+        print("Error: ${response.body}");
+      }
+    } catch (e) {
+      print("Exception: $e");
+    }
+  }
 
   // 2. The New Asynchronous Gemini Send Message Function
   Future<void> _sendMessage() async {
@@ -1071,10 +1252,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
 
    try {
       // 🟢 CHANGE THIS SPECIFIC BLOCK:
-      const String geminiApiKey =
-          "AQ.Ab8RN6KQBDU8bGGrhbJoCKjYVdC-_9a3939sduqfkXMheSTmuA";
       final url = Uri.parse(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$geminiApiKey',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_stableApiKey',
       );
       // The rest of your code (double totalExpenses = ...) stays exactly the same!
 
@@ -1256,13 +1435,15 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
                       fillColor: Colors.grey.shade100,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
-                    onSubmitted: (_) => _sendMessage(),
+                    onSubmitted: _sendMessageToGemini,
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
                   icon: Icon(Icons.send, color: _isLoading ? Colors.grey : Colors.teal),
-                  onPressed: _sendMessage,
+                  onPressed: _isLoading
+                      ? null
+                      : () => _sendMessageToGemini(_messageController.text),
                 ),
               ],
             ),
