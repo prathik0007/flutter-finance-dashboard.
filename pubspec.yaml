@@ -43,6 +43,7 @@ dependencies:
   http: ^1.6.0
   image_picker: ^1.2.2
   flutter_dotenv: ^5.2.1
+  connectivity_plus: ^7.2.0
 
 dev_dependencies:
   flutter_test:
