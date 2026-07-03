@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:universal_html/html.dart' as html;
 import 'database_service.dart';
+import 'cloud_sync_service.dart';
 // Needed to convert your list into a JSON string for storage
 
 void main() async {
@@ -2307,6 +2308,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  /// Backend client used to push the local transaction batch to the cloud.
+  /// Reads the endpoint from `.env` when available so staging/production
+  /// can be switched without recompiling.
+  late final CloudSyncService _cloudSync = CloudSyncService(
+    endpoint: Uri.parse(
+      dotenv.env['CLOUD_SYNC_ENDPOINT'] ??
+          'https://api.your-backend.example.com/v1/sync',
+    ),
+    authToken: dotenv.env['CLOUD_SYNC_TOKEN'] ?? '',
+    timeout: const Duration(seconds: 15),
+    maxRetries: 2,
+  );
+
+  /// User id sent along with each sync payload. Pull this from a real auth
+  /// provider in production; for now it falls back to a stable local id.
+  String get _cloudUserId =>
+      dotenv.env['CLOUD_SYNC_USER_ID'] ?? 'prathik';
+
   Future<void> _syncDataToCloud() async {
     if (_isSyncing) return;
 
@@ -2315,18 +2334,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     });
 
     try {
-      await Future<void>.delayed(const Duration(seconds: 2));
+      // 1) Hydrate the active transaction list from the local database.
+      final localDb = LocalDatabaseService();
+      await localDb.initDatabase();
+      final cachedBatch = await localDb.fetchStoredTransactions();
+
+      // 2) Push the batch to the backend.
+      final CloudSyncResult result = await _cloudSync.pushTransactionBatch(
+        cachedBatch,
+        userId: _cloudUserId,
+      );
 
       if (!mounted) return;
 
       setState(() {
-        lastSyncedTimestamp = _formatSyncTimestamp(DateTime.now());
+        lastSyncedTimestamp = _formatSyncTimestamp(result.timestamp);
       });
 
+      // 3) Surface the outcome to the user.
+      final Color snackColor = result.isSuccess
+          ? Colors.teal
+          : (result.status == CloudSyncStatus.unauthorized
+              ? Colors.orange
+              : Colors.redAccent);
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cloud backup completed successfully!'),
+        SnackBar(
+          backgroundColor: snackColor,
           behavior: SnackBarBehavior.floating,
+          content: Text(result.message),
         ),
       );
     } catch (e) {
@@ -2339,10 +2375,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
       );
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isSyncing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isSyncing = false;
+        });
+      }
     }
   }
 
