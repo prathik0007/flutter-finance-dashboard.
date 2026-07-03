@@ -98,9 +98,9 @@ class VoiceWaveformVisualizerState extends State<VoiceWaveformVisualizer>
   }
 
   @override
-  void didUpdateWidget(covariant VoiceWaveformVisualizer old) {
-    super.didUpdateWidget(old);
-    if (widget.isListening != old.isListening) {
+  void didUpdateWidget(covariant VoiceWaveformVisualizer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isListening != oldWidget.isListening) {
       if (!widget.isListening) {
         _acceptingInput = false;
         // Drain smoothly back to zero so the overlay doesn't snap closed.
@@ -256,7 +256,7 @@ class _MicPulse extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: controller,
-      builder: (_, __) {
+      builder: (_, _) {
         final t = controller.value; // 0..1
         // Two rings, phase-shifted for a continuous breathing effect.
         final ring1 = 90 + 40 * t + 30 * level;
