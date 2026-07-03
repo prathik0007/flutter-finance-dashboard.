@@ -45,15 +45,36 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
   List<Map<String, dynamic>> build() {
     _loadDataFromLocal();
     return [
-      {"merchant": "Starbucks Coffee", "amount": 180.00, "date": "Today"},
       {
+        "id": "seed_starbucks_180_today",
+        "merchant": "Starbucks Coffee",
+        "amount": 180.00,
+        "date": "Today",
+      },
+      {
+        "id": "seed_netflix_649_yesterday",
         "merchant": "Netflix Subscription",
         "amount": 649.00,
         "date": "Yesterday",
       },
-      {"merchant": "Electric Bill", "amount": 2450.00, "date": "24 June"},
-      {"merchant": "Zomato Delivery", "amount": 420.00, "date": "22 June"},
-      {"merchant": "Petrol Pump", "amount": 1000.00, "date": "21 June"},
+      {
+        "id": "seed_electric_2450_24june",
+        "merchant": "Electric Bill",
+        "amount": 2450.00,
+        "date": "24 June",
+      },
+      {
+        "id": "seed_zomato_420_22june",
+        "merchant": "Zomato Delivery",
+        "amount": 420.00,
+        "date": "22 June",
+      },
+      {
+        "id": "seed_petrol_1000_21june",
+        "merchant": "Petrol Pump",
+        "amount": 1000.00,
+        "date": "21 June",
+      },
     ];
   }
 
@@ -133,7 +154,12 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
         final date = item['date']?.toString() ?? DateTime.now().toString();
         final category = item['category']?.toString();
 
+        final id =
+            item['id']?.toString() ??
+            '${merchant}_${amount.toStringAsFixed(2)}_$date';
+
         loaded.add({
+          'id': id,
           'merchant': merchant,
           'amount': amount,
           'date': date,
@@ -155,6 +181,7 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
   }) {
     state = [
       {
+        "id": _generateId(merchant, amount, date),
         "merchant": merchant,
         "amount": amount,
         "date": date ?? "Just Now",
@@ -164,6 +191,34 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
     ];
 
     _saveDataToLocal();
+  }
+
+  /// Removes the transaction matching [id] from the state, then triggers
+  /// a persist to local cache so the deletion survives an app restart.
+  void deleteTransaction(String id) {
+    state = state.where((tx) {
+      final existingId = tx['id']?.toString();
+      return existingId == null || existingId != id;
+    }).toList();
+
+    _saveDataToLocal();
+  }
+
+  /// Updates an existing transaction (matched by [id]) in place. Used to
+  /// keep the list consistent when an item is mutated externally while
+  /// still preserving order.
+  void updateTransactionCategory(String id, String newCategory) {
+    state = state.map((tx) {
+      if (tx['id']?.toString() != id) return tx;
+      return {...tx, 'category': newCategory};
+    }).toList();
+
+    _saveDataToLocal();
+  }
+
+  String _generateId(String merchant, double amount, String? date) {
+    final stamp = date?.toString() ?? DateTime.now().toIso8601String();
+    return '${merchant}_${amount.toStringAsFixed(2)}_$stamp';
   }
 }
 
@@ -424,6 +479,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   double _remainingBalance = 50000.00;
   final TextEditingController _searchController = TextEditingController();
   String _transactionSearchQuery = '';
+  String _selectedCategoryFilter = 'All';
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
   String _voiceWords = "";
@@ -543,8 +599,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     List<Map<String, dynamic>> transactions,
   ) {
     final query = _transactionSearchQuery.trim().toLowerCase();
-    if (query.isEmpty) return transactions;
-
     final minAmountFilter = double.tryParse(query);
 
     return transactions.where((tx) {
@@ -558,12 +612,42 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       );
       final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
 
+      // 1) Apply the active category chip filter first.
+      if (_selectedCategoryFilter != 'All' &&
+          effectiveCategory != _selectedCategoryFilter) {
+        return false;
+      }
+
+      // 2) Apply the free-text search / amount filter (if any).
+      if (query.isEmpty) return true;
+
       final merchantMatch = merchantName.toLowerCase().contains(query);
       final categoryMatch = effectiveCategory.toLowerCase().contains(query);
       final amountMatch = minAmountFilter != null && amount >= minAmountFilter;
 
       return merchantMatch || categoryMatch || amountMatch;
     }).toList();
+  }
+
+  /// Returns the unique normalized categories present in the current
+  /// transaction list, used to build the ChoiceChip filter row.
+  List<String> _getAvailableCategories(
+    List<Map<String, dynamic>> transactions,
+  ) {
+    final seen = <String>{};
+    for (final tx in transactions) {
+      final merchantName =
+          tx['merchant']?.toString() ?? tx['merchantName']?.toString() ?? '';
+      final storedCategory = tx['category']?.toString();
+      final catName = _normalizeCategoryLabel(
+        storedCategory == null || storedCategory.trim().isEmpty
+            ? getSmartCategory(merchantName).name
+            : storedCategory,
+      );
+      seen.add(catName);
+    }
+    final ordered = seen.toList()..sort();
+    return <String>['All', ...ordered];
   }
 
   double _getCategoryTotal(String categoryName) {
@@ -1610,6 +1694,7 @@ ${dataReport.toString()}
     final currencyCode = ref.watch(currencyPreferenceProvider);
     final currencySymbol = _currencySymbol(currencyCode);
     final filteredTransactions = _getFilteredTransactions(transactions);
+    final availableCategories = _getAvailableCategories(transactions);
     double totalExpenses = transactions.fold(
       0.0,
       (sum, item) => sum + item["amount"],
