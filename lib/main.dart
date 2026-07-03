@@ -46,7 +46,11 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
     _loadDataFromLocal();
     return [
       {"merchant": "Starbucks Coffee", "amount": 180.00, "date": "Today"},
-      {"merchant": "Netflix Subscription", "amount": 649.00, "date": "Yesterday"},
+      {
+        "merchant": "Netflix Subscription",
+        "amount": 649.00,
+        "date": "Yesterday",
+      },
       {"merchant": "Electric Bill", "amount": 2450.00, "date": "24 June"},
       {"merchant": "Zomato Delivery", "amount": 420.00, "date": "22 June"},
       {"merchant": "Petrol Pump", "amount": 1000.00, "date": "21 June"},
@@ -65,22 +69,20 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final preferredCurrency = ref.read(currencyPreferenceProvider);
-      final payload = jsonEncode(
-        {
-          'preferredCurrency': preferredCurrency,
-          'transactions': state
-              .map(
-                (tx) => {
-                  'merchant': tx['merchant']?.toString() ?? 'Unknown Merchant',
-                  'amount': (tx['amount'] as num?)?.toDouble() ?? 0.0,
-                  'date': tx['date']?.toString() ?? DateTime.now().toString(),
-                  if (tx['category'] != null)
-                    'category': tx['category']?.toString(),
-                },
-              )
-              .toList(),
-        },
-      );
+      final payload = jsonEncode({
+        'preferredCurrency': preferredCurrency,
+        'transactions': state
+            .map(
+              (tx) => {
+                'merchant': tx['merchant']?.toString() ?? 'Unknown Merchant',
+                'amount': (tx['amount'] as num?)?.toDouble() ?? 0.0,
+                'date': tx['date']?.toString() ?? DateTime.now().toString(),
+                if (tx['category'] != null)
+                  'category': tx['category']?.toString(),
+              },
+            )
+            .toList(),
+      });
 
       await prefs.setString(_savedTransactionsKey, payload);
     } catch (e) {
@@ -104,7 +106,8 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
         decodedTransactions = decoded;
       } else if (decoded is Map<String, dynamic>) {
         final savedCurrency = decoded['preferredCurrency']?.toString();
-        if (savedCurrency != null && _supportedCurrencies.contains(savedCurrency)) {
+        if (savedCurrency != null &&
+            _supportedCurrencies.contains(savedCurrency)) {
           ref
               .read(currencyPreferenceProvider.notifier)
               .hydrateCurrencyCode(savedCurrency);
@@ -164,9 +167,10 @@ class TransactionNotifier extends Notifier<List<Map<String, dynamic>>> {
   }
 }
 
-final transactionProvider = NotifierProvider<TransactionNotifier, List<Map<String, dynamic>>>(() {
-  return TransactionNotifier();
-});
+final transactionProvider =
+    NotifierProvider<TransactionNotifier, List<Map<String, dynamic>>>(() {
+      return TransactionNotifier();
+    });
 
 const Map<String, String> _currencySymbols = {
   'INR': '₹',
@@ -231,8 +235,8 @@ class CurrencyPreferenceNotifier extends Notifier<String> {
 
 final currencyPreferenceProvider =
     NotifierProvider<CurrencyPreferenceNotifier, String>(() {
-  return CurrencyPreferenceNotifier();
-});
+      return CurrencyPreferenceNotifier();
+    });
 
 const Map<String, double> _defaultCategoryBudgets = {
   'Food': 5000.0,
@@ -257,10 +261,7 @@ class BudgetLimitsNotifier extends Notifier<Map<String, double>> {
   Future<void> updateCategoryLimit(String category, double newLimit) async {
     if (newLimit <= 0) return;
 
-    state = {
-      ...state,
-      category: newLimit,
-    };
+    state = {...state, category: newLimit};
 
     await _saveDataToLocal();
   }
@@ -306,8 +307,8 @@ class BudgetLimitsNotifier extends Notifier<Map<String, double>> {
 
 final budgetLimitsProvider =
     NotifierProvider<BudgetLimitsNotifier, Map<String, double>>(() {
-  return BudgetLimitsNotifier();
-});
+      return BudgetLimitsNotifier();
+    });
 
 class MonthlyBudgetCapNotifier extends Notifier<double> {
   static const String _savedMonthlyBudgetCapKey = 'saved_monthly_budget_cap';
@@ -351,9 +352,10 @@ class MonthlyBudgetCapNotifier extends Notifier<double> {
   }
 }
 
-final monthlyBudgetCapProvider = NotifierProvider<MonthlyBudgetCapNotifier, double>(() {
-  return MonthlyBudgetCapNotifier();
-});
+final monthlyBudgetCapProvider =
+    NotifierProvider<MonthlyBudgetCapNotifier, double>(() {
+      return MonthlyBudgetCapNotifier();
+    });
 
 String get _stableApiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
 
@@ -409,7 +411,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-
 // --- TAB 1: TRANSACTIONS SCREEN ---
 
 class TransactionsScreen extends ConsumerStatefulWidget {
@@ -463,16 +464,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     return _currencySymbols[currencyCode] ?? '₹';
   }
 
-  void _recordTransaction(
-    String merchant,
-    double amount, {
-    String? category,
-  }) {
-    ref.read(transactionProvider.notifier).addTransaction(
-          merchant,
-          amount,
-          category: category,
-        );
+  void _recordTransaction(String merchant, double amount, {String? category}) {
+    ref
+        .read(transactionProvider.notifier)
+        .addTransaction(merchant, amount, category: category);
 
     if (!mounted) return;
 
@@ -485,10 +480,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   void initState() {
     super.initState();
     _hydrateTransactionsOnStartup();
-    final existingExpenses = ref.read(transactionProvider).fold<double>(
-      0,
-      (sum, item) => sum + (item['amount'] as num).toDouble(),
-    );
+    final existingExpenses = ref
+        .read(transactionProvider)
+        .fold<double>(
+          0,
+          (sum, item) => sum + (item['amount'] as num).toDouble(),
+        );
     final monthlyBudgetCap = ref.read(monthlyBudgetCapProvider);
     _remainingBalance = monthlyBudgetCap - existingExpenses;
     _loadThemePreference();
@@ -505,10 +502,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     await ref.read(transactionProvider.notifier).hydrateFromLocal();
     if (!mounted) return;
 
-    final hydratedExpenses = ref.read(transactionProvider).fold<double>(
-      0,
-      (sum, item) => sum + (item['amount'] as num).toDouble(),
-    );
+    final hydratedExpenses = ref
+        .read(transactionProvider)
+        .fold<double>(
+          0,
+          (sum, item) => sum + (item['amount'] as num).toDouble(),
+        );
 
     final monthlyBudgetCap = ref.read(monthlyBudgetCapProvider);
 
@@ -586,25 +585,29 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     return total;
   }
 
-  List<PieChartSectionData> getShowingSections() {
-    final transactions = ref.watch(transactionProvider);
-    final Map<String, double> categoryTotals = {};
-    double totalExpense = 0;
+  /// Aggregates the active [CachedTransaction] list into totals per
+  /// normalized category, then returns a ready-to-render list of
+  /// [PieChartSectionData] with a unique color per category.
+  ///
+  /// Falls back to a single grey "No Expenses" slice when the list is empty
+  /// or every amount is zero, so the chart never visually breaks.
+  static List<PieChartSectionData> buildPieSectionsFromCache(
+    List<CachedTransaction> cachedTransactions,
+  ) {
+    final Map<String, double> categoryTotals = <String, double>{};
+    double totalExpense = 0.0;
 
-    for (final tx in transactions) {
-      final merchant = tx["merchant"] as String;
-      final amount = (tx["amount"] as num).toDouble();
-      final storedCategory = tx['category']?.toString();
-      final catName = _normalizeCategoryLabel(
-        storedCategory ?? getSmartCategory(merchant).name,
+    for (final CachedTransaction tx in cachedTransactions) {
+      final storedCategory = tx.category.trim();
+      final catName = _normalizeCategoryStatic(
+        storedCategory.isEmpty ? 'Misc' : storedCategory,
       );
-
-      categoryTotals[catName] = (categoryTotals[catName] ?? 0) + amount;
-      totalExpense += amount;
+      categoryTotals[catName] = (categoryTotals[catName] ?? 0) + tx.amount;
+      totalExpense += tx.amount;
     }
 
-    if (totalExpense == 0) {
-      return [
+    if (totalExpense <= 0 || categoryTotals.isEmpty) {
+      return <PieChartSectionData>[
         PieChartSectionData(
           color: Colors.grey.shade300,
           value: 1,
@@ -619,21 +622,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       ];
     }
 
-    return categoryTotals.entries.map((entry) {
-      final catName = entry.key;
-      final amount = entry.value;
-
-      Color sectionColor = Colors.blueGrey;
-      if (catName == 'Food') sectionColor = Colors.orange;
-      if (catName == 'Caf\u00e9') sectionColor = Colors.brown;
-      if (catName == 'Transport') sectionColor = Colors.blue;
-      if (catName == 'Entertainment') sectionColor = Colors.purple;
-      if (catName == 'Shopping') sectionColor = Colors.pink;
-
-      final percentage = (amount / totalExpense) * 100;
+    return categoryTotals.entries.map((MapEntry<String, double> entry) {
+      final String catName = entry.key;
+      final double amount = entry.value;
+      final double percentage = (amount / totalExpense) * 100;
 
       return PieChartSectionData(
-        color: sectionColor,
+        color: _colorForCategory(catName),
         value: amount,
         title: '${percentage.toStringAsFixed(0)}%',
         radius: 45,
@@ -644,6 +639,86 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         ),
       );
     }).toList();
+  }
+
+  /// Centralized category → color mapping so the pie chart, legend, and
+  /// category pills all stay visually consistent.
+  static Color _colorForCategory(String categoryName) {
+    switch (categoryName) {
+      case 'Food':
+        return Colors.orange;
+      case 'Café':
+        return Colors.brown;
+      case 'Transport':
+        return Colors.blue;
+      case 'Entertainment':
+        return Colors.purple;
+      case 'Shopping':
+        return Colors.pink;
+      case 'Bills':
+        return Colors.red;
+      case 'Utilities':
+        return Colors.redAccent;
+      case 'Health':
+        return Colors.green;
+      case 'Travel':
+        return Colors.indigo;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  /// Pure, side-effect-free version of [_normalizeCategoryLabel] usable from
+  /// static helpers (e.g. [buildPieSectionsFromCache]).
+  static String _normalizeCategoryStatic(String category) {
+    final String normalized = category.trim().toLowerCase();
+    switch (normalized) {
+      case 'food':
+        return 'Food';
+      case 'cafe':
+      case 'café':
+        return 'Café';
+      case 'transport':
+        return 'Transport';
+      case 'entertainment':
+        return 'Entertainment';
+      case 'shopping':
+        return 'Shopping';
+      case 'bills':
+      case 'utilities':
+        return 'Bills';
+      case 'health':
+      case 'medical':
+        return 'Health';
+      case 'travel':
+        return 'Travel';
+      default:
+        return category.trim().isEmpty ? 'Misc' : category.trim();
+    }
+  }
+
+  List<PieChartSectionData> getShowingSections() {
+    final transactions = ref.watch(transactionProvider);
+    final List<CachedTransaction> cached = transactions
+        .map(
+          (tx) => CachedTransaction(
+            id: '${tx['date']}_${tx['merchant']}_${tx['amount']}',
+            merchantName:
+                tx['merchant']?.toString() ??
+                tx['merchantName']?.toString() ??
+                'Unknown',
+            category:
+                tx['category']?.toString() ??
+                getSmartCategory((tx['merchant'] ?? '').toString()).name,
+            amount: (tx['amount'] as num?)?.toDouble() ?? 0.0,
+            timestamp:
+                DateTime.tryParse(tx['date']?.toString() ?? '') ??
+                DateTime.now(),
+            currencyCode: ref.read(currencyPreferenceProvider),
+          ),
+        )
+        .toList();
+    return buildPieSectionsFromCache(cached);
   }
 
   Widget _buildLegendItem(Color color, String text) {
@@ -787,7 +862,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final currencySymbol = _currencySymbol(currencyCode);
 
     final bool nearLimit = topCategoryRatio >= 0.8;
-    final IconData insightIcon = nearLimit ? Icons.lightbulb_rounded : Icons.show_chart_rounded;
+    final IconData insightIcon = nearLimit
+        ? Icons.lightbulb_rounded
+        : Icons.show_chart_rounded;
     final Color accentColor = nearLimit
         ? (isDarkMode ? Colors.orangeAccent : Colors.deepOrange)
         : (isDarkMode ? Colors.tealAccent : Colors.teal);
@@ -795,8 +872,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final String insightText = allUnderHalf
         ? '🎉 Great job, Prathik! You are managing your budget excellently this week.'
         : nearLimit
-            ? '💡 Tip: Your spending is highest in $topCategory this month. Consider slowing down here!'
-            : '💡 Insight: $topCategory is your most active spend category right now. Keep an eye on it as your total budget usage reaches ${(overallRatio * 100).toStringAsFixed(0)}%.';
+        ? '💡 Tip: Your spending is highest in $topCategory this month. Consider slowing down here!'
+        : '💡 Insight: $topCategory is your most active spend category right now. Keep an eye on it as your total budget usage reaches ${(overallRatio * 100).toStringAsFixed(0)}%.';
 
     return Card(
       color: cardColor,
@@ -860,7 +937,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
   }
 
-  Widget _buildBudgetProgressBar(String category, double budget, String currencyCode) {
+  Widget _buildBudgetProgressBar(
+    String category,
+    double budget,
+    String currencyCode,
+  ) {
     final spent = _getCategoryTotal(category);
     final percent = budget > 0 ? (spent / budget) : 0.0;
     final visualPercent = percent > 1.0 ? 1.0 : percent;
@@ -869,8 +950,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final convertedSpent = _convertFromInr(spent, currencyCode);
     final convertedBudget = _convertFromInr(budget, currencyCode);
 
-    final Color progressColor =
-        percent > 0.80 ? Colors.red : Colors.teal;
+    final Color progressColor = percent > 0.80 ? Colors.red : Colors.teal;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
@@ -948,7 +1028,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         );
       }
 
-      final prompt = """
+      final prompt =
+          """
 You are a witty, smart, and slightly brutally honest AI Personal Finance Coach embedded inside a dashboard app.
 Review this user spending data below and provide a concise, single-paragraph (max 3 sentences) takeaway insight.
 Call out any category where they are dangerously close to or exceeding their budget limit.
@@ -965,10 +1046,10 @@ ${dataReport.toString()}
           "contents": [
             {
               "parts": [
-                {"text": prompt}
-              ]
-            }
-          ]
+                {"text": prompt},
+              ],
+            },
+          ],
         }),
       );
 
@@ -1104,17 +1185,14 @@ ${dataReport.toString()}
             "parts": [
               {
                 "text":
-                    "Analyze this receipt image. Extract the merchant name, the total amount spent, and the category (e.g., Food, Cafe, Utilities, Transport, Entertainment). Respond ONLY with a valid, raw JSON object exactly like this: {\"merchant\": \"Name\", \"amount\": 0.0, \"category\": \"Category\"}. Do not wrap it in markdown code blocks."
+                    "Analyze this receipt image. Extract the merchant name, the total amount spent, and the category (e.g., Food, Cafe, Utilities, Transport, Entertainment). Respond ONLY with a valid, raw JSON object exactly like this: {\"merchant\": \"Name\", \"amount\": 0.0, \"category\": \"Category\"}. Do not wrap it in markdown code blocks.",
               },
               {
-                "inlineData": {
-                  "mimeType": "image/jpeg",
-                  "data": base64Image,
-                }
-              }
-            ]
-          }
-        ]
+                "inlineData": {"mimeType": "image/jpeg", "data": base64Image},
+              },
+            ],
+          },
+        ],
       };
 
       final response = await http.post(
@@ -1133,16 +1211,15 @@ ${dataReport.toString()}
         final merchantName =
             extractedData['merchant']?.toString() ?? 'Unknown Merchant';
         final amountValue = extractedData['amount'];
-        final parsedAmount =
-            amountValue is num ? amountValue.toDouble() : 0.0;
+        final parsedAmount = amountValue is num ? amountValue.toDouble() : 0.0;
         final rawCategory = extractedData['category']?.toString() ?? '';
-        final category = _normalizeCategoryLabel(
-          rawCategory,
-        );
+        final category = _normalizeCategoryLabel(rawCategory);
 
         final transactionDate = DateTime.now().toString();
 
-        ref.read(transactionProvider.notifier).addTransaction(
+        ref
+            .read(transactionProvider.notifier)
+            .addTransaction(
               merchantName,
               parsedAmount,
               category: category.isEmpty ? null : category,
@@ -1160,18 +1237,27 @@ ${dataReport.toString()}
           final symbol = _currencySymbol(currencyCode);
           final categoryBudgetLimit = categoryBudgets[category]!;
           final updatedCategorySpent = _getCategoryTotal(category);
-          final convertedSpent = _convertFromInr(updatedCategorySpent, currencyCode);
-          final convertedBudget = _convertFromInr(categoryBudgetLimit, currencyCode);
-          final budgetUsage =
-              categoryBudgetLimit > 0 ? updatedCategorySpent / categoryBudgetLimit : 0.0;
+          final convertedSpent = _convertFromInr(
+            updatedCategorySpent,
+            currencyCode,
+          );
+          final convertedBudget = _convertFromInr(
+            categoryBudgetLimit,
+            currencyCode,
+          );
+          final budgetUsage = categoryBudgetLimit > 0
+              ? updatedCategorySpent / categoryBudgetLimit
+              : 0.0;
 
           if (budgetUsage >= 1.0 || budgetUsage >= 0.8) {
             final isCritical = budgetUsage >= 1.0;
-            final alertColor = isCritical ? Colors.redAccent : Colors.orangeAccent;
+            final alertColor = isCritical
+                ? Colors.redAccent
+                : Colors.orangeAccent;
             final thresholdLabel = isCritical ? '100%' : '80%';
             final message = isCritical
-              ? '⚠️ Budget exceeded for $category: $symbol${convertedSpent.toStringAsFixed(0)} / $symbol${convertedBudget.toStringAsFixed(0)} used.'
-              : '⚠️ Budget warning for $category: $symbol${convertedSpent.toStringAsFixed(0)} / $symbol${convertedBudget.toStringAsFixed(0)} used ($thresholdLabel+).';
+                ? '⚠️ Budget exceeded for $category: $symbol${convertedSpent.toStringAsFixed(0)} / $symbol${convertedBudget.toStringAsFixed(0)} used.'
+                : '⚠️ Budget warning for $category: $symbol${convertedSpent.toStringAsFixed(0)} / $symbol${convertedBudget.toStringAsFixed(0)} used ($thresholdLabel+).';
 
             ScaffoldMessenger.of(context)
               ..clearSnackBars()
@@ -1181,7 +1267,10 @@ ${dataReport.toString()}
                   behavior: SnackBarBehavior.floating,
                   content: Row(
                     children: [
-                      const Icon(Icons.warning_amber_rounded, color: Colors.white),
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Colors.white,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -1285,11 +1374,12 @@ ${dataReport.toString()}
       (sum, item) => sum + (item['amount'] as num).toDouble(),
     );
 
-    final tableRows = transactions.map((tx) {
-      final merchant = tx['merchant'] as String;
-      final amount = (tx['amount'] as num).toDouble();
-      final cat = getSmartCategory(merchant);
-      return '''
+    final tableRows = transactions
+        .map((tx) {
+          final merchant = tx['merchant'] as String;
+          final amount = (tx['amount'] as num).toDouble();
+          final cat = getSmartCategory(merchant);
+          return '''
       <tr>
         <td>${_escapeHtml(tx['date'].toString())}</td>
         <td><strong>${_escapeHtml(merchant)}</strong></td>
@@ -1297,9 +1387,11 @@ ${dataReport.toString()}
         <td style="text-align: right; color: #d32f2f;">- ₹${amount.toStringAsFixed(2)}</td>
       </tr>
     ''';
-    }).join('');
+        })
+        .join('');
 
-    final htmlContent = '''
+    final htmlContent =
+        '''
     <html>
     <head>
       <title>Financial Ledger Summary Report</title>
@@ -1364,7 +1456,8 @@ ${dataReport.toString()}
           ),
           ElevatedButton(
             onPressed: () {
-              if (merchantController.text.isNotEmpty && amountController.text.isNotEmpty) {
+              if (merchantController.text.isNotEmpty &&
+                  amountController.text.isNotEmpty) {
                 final amt = double.tryParse(amountController.text) ?? 0.0;
                 _recordTransaction(merchantController.text, amt);
                 Navigator.pop(ctx);
@@ -1392,10 +1485,13 @@ ${dataReport.toString()}
     final merchantMatch = merchantRegex.firstMatch(lowerText);
     if (merchantMatch != null && merchantMatch.groupCount >= 1) {
       parsedMerchant = merchantMatch.group(1)!.trim();
-      parsedMerchant = parsedMerchant.split(' ').map((word) {
-        if (word.isEmpty) return word;
-        return word[0].toUpperCase() + word.substring(1);
-      }).join(' ');
+      parsedMerchant = parsedMerchant
+          .split(' ')
+          .map((word) {
+            if (word.isEmpty) return word;
+            return word[0].toUpperCase() + word.substring(1);
+          })
+          .join(' ');
     }
 
     if (parsedAmount != null) {
@@ -1514,9 +1610,15 @@ ${dataReport.toString()}
     final currencyCode = ref.watch(currencyPreferenceProvider);
     final currencySymbol = _currencySymbol(currencyCode);
     final filteredTransactions = _getFilteredTransactions(transactions);
-    double totalExpenses = transactions.fold(0.0, (sum, item) => sum + item["amount"]);
+    double totalExpenses = transactions.fold(
+      0.0,
+      (sum, item) => sum + item["amount"],
+    );
     double currentBalance = monthlyBudgetCap - totalExpenses;
-    final convertedCurrentBalance = _convertFromInr(currentBalance, currencyCode);
+    final convertedCurrentBalance = _convertFromInr(
+      currentBalance,
+      currencyCode,
+    );
     final convertedMonthlyCap = _convertFromInr(monthlyBudgetCap, currencyCode);
     final convertedTotalExpenses = _convertFromInr(totalExpenses, currencyCode);
     final cardColor = isDarkMode ? Colors.grey[850]! : Colors.white;
@@ -1536,328 +1638,430 @@ ${dataReport.toString()}
         scaffoldBackgroundColor: Colors.grey[900],
       ),
       home: Scaffold(
-      appBar: AppBar(
-        title: const Text('AI Finance Dashboard', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: isDarkMode ? Colors.teal[800] : Colors.teal,
-        centerTitle: true,
-        actions: [
-          Icon(isDarkMode ? Icons.dark_mode : Icons.light_mode),
-          Switch(
-            value: isDarkMode,
-            onChanged: _toggleTheme,
-            activeThumbColor: Colors.tealAccent,
+        appBar: AppBar(
+          title: const Text(
+            'AI Finance Dashboard',
+            style: TextStyle(fontWeight: FontWeight.bold),
           ),
-          IconButton(
-            icon: const Icon(Icons.power_settings_new),
-            tooltip: 'Lock Dashboard',
-            onPressed: () => setState(() => isLocked = true),
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.teal.shade700, Colors.teal.shade400],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.teal.withValues(alpha: 0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 6),
-                )
-              ],
+          backgroundColor: isDarkMode ? Colors.teal[800] : Colors.teal,
+          centerTitle: true,
+          actions: [
+            Icon(isDarkMode ? Icons.dark_mode : Icons.light_mode),
+            Switch(
+              value: isDarkMode,
+              onChanged: _toggleTheme,
+              activeThumbColor: Colors.tealAccent,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Total Balance', style: TextStyle(color: Colors.white70, fontSize: 16)),
-                    IconButton(
-                      icon: Icon(
-                        _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                        color: _isListening ? Colors.red : Colors.white,
-                      ),
-                      onPressed: _listen,
+            IconButton(
+              icon: const Icon(Icons.power_settings_new),
+              tooltip: 'Lock Dashboard',
+              onPressed: () => setState(() => isLocked = true),
+            ),
+          ],
+        ),
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.teal.shade700, Colors.teal.shade400],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.teal.withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '$currencySymbol${convertedCurrentBalance.toStringAsFixed(2)}',
-                  style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        CircleAvatar(
-                          backgroundColor: Colors.white.withValues(alpha: 0.2),
-                          child: const Icon(Icons.arrow_downward, color: Colors.greenAccent),
+                        const Text(
+                          'Total Balance',
+                          style: TextStyle(color: Colors.white70, fontSize: 16),
                         ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Income', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                            Text('$currencySymbol${convertedMonthlyCap.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                          ],
+                        IconButton(
+                          icon: Icon(
+                            _isListening
+                                ? Icons.mic_rounded
+                                : Icons.mic_none_rounded,
+                            color: _isListening ? Colors.red : Colors.white,
+                          ),
+                          onPressed: _listen,
                         ),
                       ],
                     ),
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: Colors.white.withValues(alpha: 0.2),
-                          child: const Icon(Icons.arrow_upward, color: Colors.redAccent),
-                        ),
-                        const SizedBox(width: 8),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Expenses', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                            Text('$currencySymbol${convertedTotalExpenses.toStringAsFixed(0)}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                )
-              ],
-            ),
-          ),
-          _buildAICoachCard(cardColor, textColor),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
-            child: SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _exportToCSV,
-                icon: const Icon(Icons.download_rounded),
-                label: const Text('Export Analytics Report'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isDarkMode ? Colors.teal[600] : Colors.teal,
-                  foregroundColor: Colors.white,
-                  elevation: 1,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          _buildExpenseTrendChart(cardColor, textColor),
-          _buildAnalyticsInsightCard(cardColor, textColor, categoryBudgets, currencyCode),
-          Card(
-            margin: const EdgeInsets.all(16.0),
-            elevation: 2,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                    child: Text(
-                      'Monthly Category Budgets',
-                      style: TextStyle(
-                        fontSize: 16,
+                    const SizedBox(height: 4),
+                    Text(
+                      '$currencySymbol${convertedCurrentBalance.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: Colors.teal,
                       ),
                     ),
-                  ),
-                  const Divider(),
-                  ...categoryBudgets.entries.map((entry) {
-                    return _buildBudgetProgressBar(entry.key, entry.value, currencyCode);
-                  }),
-                ],
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Recent Transactions',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: textColor,
-                  ),
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.table_view_rounded, color: Colors.green),
-                      tooltip: 'Export CSV Spreadsheet',
-                      onPressed: _exportToCSV,
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.picture_as_pdf_rounded, color: Colors.redAccent),
-                      tooltip: 'Print Summary PDF',
-                      onPressed: _exportToPDF,
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.2,
+                              ),
+                              child: const Icon(
+                                Icons.arrow_downward,
+                                color: Colors.greenAccent,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Income',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  '$currencySymbol${convertedMonthlyCap.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.2,
+                              ),
+                              child: const Icon(
+                                Icons.arrow_upward,
+                                color: Colors.redAccent,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Expenses',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                Text(
+                                  '$currencySymbol${convertedTotalExpenses.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-            child: TextField(
-              controller: _searchController,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                hintText: 'Search by category, merchant, or amount...',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded),
-                        tooltip: 'Clear search',
-                        onPressed: () {
-                          _searchController.clear();
-                          FocusScope.of(context).unfocus();
-                        },
-                      ),
-                filled: true,
-                fillColor: isDarkMode ? Colors.grey[850] : Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
+              ),
+              _buildAICoachCard(cardColor, textColor),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 6.0,
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide(
-                    color: isDarkMode ? Colors.grey.shade700 : Colors.grey.shade300,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _exportToCSV,
+                    icon: const Icon(Icons.download_rounded),
+                    label: const Text('Export Analytics Report'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isDarkMode
+                          ? Colors.teal[600]
+                          : Colors.teal,
+                      foregroundColor: Colors.white,
+                      elevation: 1,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
                   ),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: const BorderSide(color: Colors.teal, width: 1.4),
-                ),
               ),
-            ),
-          ),
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: filteredTransactions.length,
-            itemBuilder: (context, index) {
-                final tx = filteredTransactions[index];
-                final merchantName =
-                    tx['merchant']?.toString() ?? tx['merchantName']?.toString() ?? 'Unknown Merchant';
-                final smartCategory = getSmartCategory(merchantName);
-                final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
-                final convertedAmount = _convertFromInr(amount, currencyCode);
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  elevation: 2,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: smartCategory.color.withValues(alpha: 0.15),
-                      child: Icon(smartCategory.icon, color: smartCategory.color),
-                    ),
-                    title: Text(
-                      merchantName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(top: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: smartCategory.color.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(6),
+              const SizedBox(height: 8),
+              _buildExpenseTrendChart(cardColor, textColor),
+              _buildAnalyticsInsightCard(
+                cardColor,
+                textColor,
+                categoryBudgets,
+                currencyCode,
+              ),
+              Card(
+                margin: const EdgeInsets.all(16.0),
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16.0,
+                          vertical: 4.0,
                         ),
                         child: Text(
-                          smartCategory.name,
+                          'Monthly Category Budgets',
                           style: TextStyle(
-                            color: smartCategory.color,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.teal,
                           ),
                         ),
                       ),
-                    ),
-                    trailing: Text(
-                      '- $currencySymbol${convertedAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.redAccent),
-                    ),
+                      const Divider(),
+                      ...categoryBudgets.entries.map((entry) {
+                        return _buildBudgetProgressBar(
+                          entry.key,
+                          entry.value,
+                          currencyCode,
+                        );
+                      }),
+                    ],
                   ),
-                );
-              },
-          ),
-          ],
-        ),
-      ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          FloatingActionButton(
-            heroTag: 'voiceTransaction',
-            onPressed: _listen,
-            backgroundColor: _isListening ? Colors.red : Colors.blue,
-            child: Icon(
-              _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton(
-            heroTag: 'scanReceipt',
-            onPressed: isScanLoading ? null : _scanReceiptWithAI,
-            backgroundColor: Colors.deepPurple,
-            child: isScanLoading
-                ? const Center(
-                    child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 8.0,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Recent Transactions',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: textColor,
                       ),
                     ),
-                  )
-                : const Icon(Icons.camera_alt, color: Colors.white),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(
+                            Icons.table_view_rounded,
+                            color: Colors.green,
+                          ),
+                          tooltip: 'Export CSV Spreadsheet',
+                          onPressed: _exportToCSV,
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.picture_as_pdf_rounded,
+                            color: Colors.redAccent,
+                          ),
+                          tooltip: 'Print Summary PDF',
+                          onPressed: _exportToPDF,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 4.0,
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Search by category, merchant, or amount...',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close_rounded),
+                            tooltip: 'Clear search',
+                            onPressed: () {
+                              _searchController.clear();
+                              FocusScope.of(context).unfocus();
+                            },
+                          ),
+                    filled: true,
+                    fillColor: isDarkMode ? Colors.grey[850] : Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(
+                        color: isDarkMode
+                            ? Colors.grey.shade700
+                            : Colors.grey.shade300,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(
+                        color: Colors.teal,
+                        width: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: filteredTransactions.length,
+                itemBuilder: (context, index) {
+                  final tx = filteredTransactions[index];
+                  final merchantName =
+                      tx['merchant']?.toString() ??
+                      tx['merchantName']?.toString() ??
+                      'Unknown Merchant';
+                  final smartCategory = getSmartCategory(merchantName);
+                  final amount = (tx['amount'] as num?)?.toDouble() ?? 0.0;
+                  final convertedAmount = _convertFromInr(amount, currencyCode);
+                  return Card(
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: smartCategory.color.withValues(
+                          alpha: 0.15,
+                        ),
+                        child: Icon(
+                          smartCategory.icon,
+                          color: smartCategory.color,
+                        ),
+                      ),
+                      title: Text(
+                        merchantName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: smartCategory.color.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            smartCategory.name,
+                            style: TextStyle(
+                              color: smartCategory.color,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      trailing: Text(
+                        '- $currencySymbol${convertedAmount.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: Colors.redAccent,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          FloatingActionButton(
-            heroTag: 'addTransaction',
-            onPressed: _showAddTransactionDialog,
-            backgroundColor: Colors.teal,
-            child: const Icon(Icons.add, color: Colors.white),
-          ),
-        ],
-      ),
+        ),
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FloatingActionButton(
+              heroTag: 'voiceTransaction',
+              onPressed: _listen,
+              backgroundColor: _isListening ? Colors.red : Colors.blue,
+              child: Icon(
+                _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FloatingActionButton(
+              heroTag: 'scanReceipt',
+              onPressed: isScanLoading ? null : _scanReceiptWithAI,
+              backgroundColor: Colors.deepPurple,
+              child: isScanLoading
+                  ? const Center(
+                      child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      ),
+                    )
+                  : const Icon(Icons.camera_alt, color: Colors.white),
+            ),
+            const SizedBox(height: 12),
+            FloatingActionButton(
+              heroTag: 'addTransaction',
+              onPressed: _showAddTransactionDialog,
+              backgroundColor: Colors.teal,
+              child: const Icon(Icons.add, color: Colors.white),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
-
 
 // --- TAB 3: SETTINGS / PROFILE SCREEN ---
 
@@ -1911,16 +2115,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final monthlyCapInInr = ref.read(monthlyBudgetCapProvider);
     final categoryBudgetsInInr = ref.read(budgetLimitsProvider);
 
-    _monthlyCapController.text =
-        _convertFromInr(monthlyCapInInr, currencyCode).toStringAsFixed(2);
+    _monthlyCapController.text = _convertFromInr(
+      monthlyCapInInr,
+      currencyCode,
+    ).toStringAsFixed(2);
 
     for (final entry in categoryBudgetsInInr.entries) {
       final controller = _categoryControllers.putIfAbsent(
         entry.key,
         () => TextEditingController(),
       );
-      controller.text =
-          _convertFromInr(entry.value, currencyCode).toStringAsFixed(2);
+      controller.text = _convertFromInr(
+        entry.value,
+        currencyCode,
+      ).toStringAsFixed(2);
     }
   }
 
@@ -1931,11 +2139,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final budgets = ref.read(budgetLimitsProvider);
     final currencyCode = ref.read(currencyPreferenceProvider);
 
-    _monthlyCapController =
-        TextEditingController(text: _convertFromInr(monthlyCap, currencyCode).toStringAsFixed(2));
+    _monthlyCapController = TextEditingController(
+      text: _convertFromInr(monthlyCap, currencyCode).toStringAsFixed(2),
+    );
     for (final entry in budgets.entries) {
-      _categoryControllers[entry.key] =
-          TextEditingController(text: _convertFromInr(entry.value, currencyCode).toStringAsFixed(2));
+      _categoryControllers[entry.key] = TextEditingController(
+        text: _convertFromInr(entry.value, currencyCode).toStringAsFixed(2),
+      );
     }
   }
 
@@ -1988,7 +2198,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final monthlyCap = double.tryParse(_monthlyCapController.text.trim());
     if (monthlyCap != null && monthlyCap > 0) {
       final monthlyCapInInr = _convertToInr(monthlyCap, currencyCode);
-      await ref.read(monthlyBudgetCapProvider.notifier).updateBudgetCap(monthlyCapInInr);
+      await ref
+          .read(monthlyBudgetCapProvider.notifier)
+          .updateBudgetCap(monthlyCapInInr);
     }
 
     for (final entry in _categoryControllers.entries) {
@@ -2072,7 +2284,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SizedBox(height: 12),
             Row(
               children: [
-                Icon(Icons.link_rounded, size: 18, color: Colors.green.shade700),
+                Icon(
+                  Icons.link_rounded,
+                  size: 18,
+                  color: Colors.green.shade700,
+                ),
                 const SizedBox(width: 8),
                 const Text(
                   'Status: Linked',
@@ -2083,7 +2299,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                Icon(Icons.schedule_rounded, size: 18, color: Colors.teal.shade700),
+                Icon(
+                  Icons.schedule_rounded,
+                  size: 18,
+                  color: Colors.teal.shade700,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'Last Synced: $lastSyncedTimestamp',
@@ -2171,7 +2391,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
                 onChanged: (value) async {
                   if (value == null) return;
-                  await ref.read(currencyPreferenceProvider.notifier).setCurrencyCode(value);
+                  await ref
+                      .read(currencyPreferenceProvider.notifier)
+                      .setCurrencyCode(value);
                   if (!mounted) return;
                   setState(() {
                     _refreshBudgetControllers(value);
@@ -2194,7 +2416,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: TextField(
                 controller: _monthlyCapController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Total Monthly Cap ($currencySymbol)',
                   prefixIcon: const Icon(Icons.savings_rounded),
@@ -2228,17 +2452,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               final controller = _categoryControllers.putIfAbsent(
                 entry.key,
                 () => TextEditingController(
-                  text: _convertFromInr(entry.value, selectedCurrency).toStringAsFixed(2),
+                  text: _convertFromInr(
+                    entry.value,
+                    selectedCurrency,
+                  ).toStringAsFixed(2),
                 ),
               );
 
               return Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16.0,
+                  vertical: 6.0,
+                ),
                 child: TextField(
                   controller: controller,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: InputDecoration(
                     labelText: '${entry.key} Limit ($currencySymbol)',
                     prefixIcon: const Icon(Icons.tune_rounded),
@@ -2249,7 +2479,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (value) {
                     final parsed = double.tryParse(value.trim());
                     if (parsed != null && parsed > 0) {
-                      final parsedInInr = _convertToInr(parsed, selectedCurrency);
+                      final parsedInInr = _convertToInr(
+                        parsed,
+                        selectedCurrency,
+                      );
                       ref
                           .read(budgetLimitsProvider.notifier)
                           .updateCategoryLimit(entry.key, parsedInInr);
@@ -2285,7 +2518,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 }
 
-
 // --- TAB 2: AI CHAT SCREEN (INTERACTIVE CHAT UI & RULE ENGINE) ---
 
 // --- TAB 2: AI CHAT SCREEN (GEMINI CONFIGURATION) ---
@@ -2301,7 +2533,7 @@ class AiChatScreen extends ConsumerStatefulWidget {
 // 2. THIS IS THE STATE OBJECT MANAGEMENT
 class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final TextEditingController _messageController = TextEditingController();
-  
+
   // 1. Added State Variables
   bool _isLoading = false;
   final Map<String, double> categoryBudgets = {
@@ -2314,8 +2546,9 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
   final List<Map<String, String>> _messages = [
     {
       "sender": "ai",
-      "text": "Hello! I am your AI Finance Assistant. Ask me anything about your expenses or dynamic balance!"
-    }
+      "text":
+          "Hello! I am your AI Finance Assistant. Ask me anything about your expenses or dynamic balance!",
+    },
   ];
 
   double _getCategoryTotal(String categoryName) {
@@ -2350,7 +2583,8 @@ class _AiChatScreenState extends ConsumerState<AiChatScreen> {
         );
       });
 
-      final prompt = """
+      final prompt =
+          """
 You are a helpful personal finance chat assistant inside a dashboard app.
 Answer the user's question briefly based on their data.
 
@@ -2367,10 +2601,10 @@ Question: $text
           "contents": [
             {
               "parts": [
-                {"text": prompt}
-              ]
-            }
-          ]
+                {"text": prompt},
+              ],
+            },
+          ],
         }),
       );
 
@@ -2406,27 +2640,35 @@ Question: $text
 
     _messageController.clear();
 
-   try {
+    try {
       // 🟢 CHANGE THIS SPECIFIC BLOCK:
       final url = Uri.parse(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_stableApiKey',
       );
       // The rest of your code (double totalExpenses = ...) stays exactly the same!
 
-      double totalExpenses = currentTransactions.fold(0.0, (sum, item) => sum + item["amount"]);
+      double totalExpenses = currentTransactions.fold(
+        0.0,
+        (sum, item) => sum + item["amount"],
+      );
       double dynamicBalance = 50000.00 - totalExpenses;
 
-      String transactionContext = "You are a helpful financial assistant app. Here is the user's current live transaction data:\n";
+      String transactionContext =
+          "You are a helpful financial assistant app. Here is the user's current live transaction data:\n";
       transactionContext += "Total Income base: ₹50,000.00\n";
-      transactionContext += "Current Calculated Balance: ₹${dynamicBalance.toStringAsFixed(2)}\n";
-      transactionContext += "Total Expenses: ₹${totalExpenses.toStringAsFixed(2)}\n\n";
+      transactionContext +=
+          "Current Calculated Balance: ₹${dynamicBalance.toStringAsFixed(2)}\n";
+      transactionContext +=
+          "Total Expenses: ₹${totalExpenses.toStringAsFixed(2)}\n\n";
       transactionContext += "Transaction Records:\n";
-      
+
       for (var tx in currentTransactions) {
-        transactionContext += "- ${tx['date']}: ${tx['merchant']} for ₹${tx['amount']}\n";
+        transactionContext +=
+            "- ${tx['date']}: ${tx['merchant']} for ₹${tx['amount']}\n";
       }
-      
-      transactionContext += "\nAnswer the user's question accurately using ONLY the structured financial data provided above. Be concise and conversational. User question: $query";
+
+      transactionContext +=
+          "\nAnswer the user's question accurately using ONLY the structured financial data provided above. Be concise and conversational. User question: $query";
 
       final response = await http.post(
         url,
@@ -2435,10 +2677,10 @@ Question: $text
           "contents": [
             {
               "parts": [
-                {"text": transactionContext}
-              ]
-            }
-          ]
+                {"text": transactionContext},
+              ],
+            },
+          ],
         }),
       );
 
@@ -2455,7 +2697,8 @@ Question: $text
         setState(() {
           _messages.add({
             "sender": "ai",
-            "text": "Chat Error: ${response.statusCode}\nDetails: ${response.body}"
+            "text":
+                "Chat Error: ${response.statusCode}\nDetails: ${response.body}",
           });
         });
       }
@@ -2463,7 +2706,7 @@ Question: $text
       setState(() {
         _messages.add({
           "sender": "ai",
-          "text": "Error connecting to Gemini API. Details: $e"
+          "text": "Error connecting to Gemini API. Details: $e",
         });
       });
     } finally {
@@ -2474,7 +2717,7 @@ Question: $text
   }
 
   // 3. UI Layout Definition
- // 3. UI Layout Definition
+  // 3. UI Layout Definition
   @override
   Widget build(BuildContext context) {
     final transactions = ref.watch(transactionProvider);
@@ -2482,7 +2725,10 @@ Question: $text
     return Scaffold(
       backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: const Text('Gemini Financial Assistant', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Gemini Financial Assistant',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.teal.shade100,
         centerTitle: true,
         actions: [
@@ -2495,7 +2741,8 @@ Question: $text
                 _messages.clear();
                 _messages.add({
                   "sender": "ai",
-                  "text": "Hello! I am your AI Finance Assistant. Ask me anything about your expenses or dynamic balance!"
+                  "text":
+                      "Hello! I am your AI Finance Assistant. Ask me anything about your expenses or dynamic balance!",
                 });
               });
             },
@@ -2506,10 +2753,13 @@ Question: $text
             child: Center(
               child: Text(
                 'Txs: ${transactions.length}',
-                style: const TextStyle(color: Colors.teal, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  color: Colors.teal,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          )
+          ),
         ],
       ),
       body: Column(
@@ -2524,7 +2774,9 @@ Question: $text
                 final isUser = msg["sender"] == "user";
 
                 return Align(
-                  alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  alignment: isUser
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     padding: const EdgeInsets.all(14),
@@ -2533,11 +2785,17 @@ Question: $text
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
-                        bottomLeft: isUser ? const Radius.circular(16) : Radius.zero,
-                        bottomRight: isUser ? Radius.zero : const Radius.circular(16),
+                        bottomLeft: isUser
+                            ? const Radius.circular(16)
+                            : Radius.zero,
+                        bottomRight: isUser
+                            ? Radius.zero
+                            : const Radius.circular(16),
                       ),
                     ),
-                    constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.75,
+                    ),
                     child: Text(
                       msg["text"]!,
                       style: TextStyle(
@@ -2558,7 +2816,10 @@ Question: $text
               child: SizedBox(
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.teal),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.teal,
+                ),
               ),
             ),
 
@@ -2572,7 +2833,7 @@ Question: $text
                   color: Colors.grey.withValues(alpha: 0.1),
                   blurRadius: 4,
                   offset: const Offset(0, -2),
-                )
+                ),
               ],
             ),
             child: Row(
@@ -2589,14 +2850,20 @@ Question: $text
                       ),
                       filled: true,
                       fillColor: Colors.grey.shade100,
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
                     ),
                     onSubmitted: _sendMessageToGemini,
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: Icon(Icons.send, color: _isLoading ? Colors.grey : Colors.teal),
+                  icon: Icon(
+                    Icons.send,
+                    color: _isLoading ? Colors.grey : Colors.teal,
+                  ),
                   onPressed: _isLoading
                       ? null
                       : () => _sendMessageToGemini(_messageController.text),
