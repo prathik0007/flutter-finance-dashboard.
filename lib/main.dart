@@ -1249,7 +1249,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         : nearLimit
         ? '💡 Tip: Your spending is highest in $topCategory this month. Consider slowing down here!'
         : '💡 Insight: $topCategory is your most active spend category right now. Keep an eye on it as your total budget usage reaches ${(overallRatio * 100).toStringAsFixed(0)}%.';
-        : '💡 Insight: $topCategory is your most active spend category right now. Keep an eye on it as your total budget usage reaches ${(overallRatio * 100).toStringAsFixed(0)}%.';
 
     return Card(
       color: cardColor,
