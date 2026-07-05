@@ -14,11 +14,14 @@ import 'package:universal_html/html.dart' as html;
 import 'database_service.dart';
 import 'cloud_sync_service.dart';
 import 'firestore_service.dart';
+import 'firebase_options.dart';
 // Needed to convert your list into a JSON string for storage
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   await dotenv.load(fileName: ".env");
   runApp(const ProviderScope(child: FinanceApp()));
 }
