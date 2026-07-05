@@ -83,4 +83,27 @@ class FirestoreService {
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => doc.data()).toList());
   }
+
+  // --- USER PROFILE / INCOME METHODS ---
+
+  Future<void> updateMonthlyIncome(double income) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    await _db.collection('users').doc(user.uid).set({
+      'monthlyIncome': income,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Stream<double?> getMonthlyIncomeStream() {
+    final user = _auth.currentUser;
+    if (user == null) return Stream.value(null);
+
+    return _db.collection('users').doc(user.uid).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      final data = doc.data();
+      return (data?['monthlyIncome'] as num?)?.toDouble();
+    });
+  }
 }

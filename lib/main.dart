@@ -425,7 +425,7 @@ const Map<String, double> _defaultCategoryBudgets = {
   'Shopping': 6000.0,
 };
 
-const double _defaultMonthlyBudgetCap = 50000.0;
+const double _defaultMonthlyBudgetCap = 0.0;
 
 class BudgetLimitsNotifier extends Notifier<Map<String, double>> {
   static const String _savedBudgetLimitsKey = 'saved_budget_limits';
@@ -492,17 +492,38 @@ final budgetLimitsProvider =
 class MonthlyBudgetCapNotifier extends Notifier<double> {
   static const String _savedMonthlyBudgetCapKey = 'saved_monthly_budget_cap';
   bool _hasHydrated = false;
+  final FirestoreService _firestoreService = FirestoreService();
 
   @override
   double build() {
     _loadDataFromLocal();
+    _listenToFirestore();
     return _defaultMonthlyBudgetCap;
+  }
+
+  void _listenToFirestore() {
+    _firestoreService.getMonthlyIncomeStream().listen((income) {
+      if (income != null && income > 0) {
+        state = income;
+        _saveToLocalOnly(income);
+      }
+    });
   }
 
   Future<void> updateBudgetCap(double newCap) async {
     if (newCap <= 0) return;
     state = newCap;
     await _saveDataToLocal();
+    await _firestoreService.updateMonthlyIncome(newCap);
+  }
+
+  Future<void> _saveToLocalOnly(double cap) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_savedMonthlyBudgetCapKey, cap);
+    } catch (e) {
+      debugPrint('Save local cap error: $e');
+    }
   }
 
   Future<void> _saveDataToLocal() async {
@@ -604,7 +625,6 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   final FirestoreService _firestoreService = FirestoreService();
-  double _remainingBalance = 50000.00;
   final TextEditingController _searchController = TextEditingController();
   String _transactionSearchQuery = '';
   String _selectedCategoryFilter = 'All';
@@ -641,6 +661,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     return inrAmount / rate;
   }
 
+  double _convertToInr(double amount, String currencyCode) {
+    final rate = _currencyToInrRate[currencyCode] ?? 1.0;
+    return amount * rate;
+  }
+
   String _currencySymbol(String currencyCode) {
     return _currencySymbols[currencyCode] ?? '₹';
   }
@@ -653,14 +678,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   void initState() {
     super.initState();
     _hydrateTransactionsOnStartup();
-    final existingExpenses = ref
-        .read(transactionProvider)
-        .fold<double>(
-          0,
-          (sum, item) => sum + (item['amount'] as num).toDouble(),
-        );
-    final monthlyBudgetCap = ref.read(monthlyBudgetCapProvider);
-    _remainingBalance = monthlyBudgetCap - existingExpenses;
     _loadThemePreference();
     _searchController.addListener(() {
       final currentQuery = _searchController.text;
@@ -673,20 +690,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   Future<void> _hydrateTransactionsOnStartup() async {
     await ref.read(transactionProvider.notifier).hydrateFromLocal();
-    if (!mounted) return;
-
-    final hydratedExpenses = ref
-        .read(transactionProvider)
-        .fold<double>(
-          0,
-          (sum, item) => sum + (item['amount'] as num).toDouble(),
-        );
-
-    final monthlyBudgetCap = ref.read(monthlyBudgetCapProvider);
-
-    setState(() {
-      _remainingBalance = monthlyBudgetCap - hydratedExpenses;
-    });
   }
 
   Future<void> _loadThemePreference() async {
@@ -1426,10 +1429,6 @@ ${dataReport.toString()}
               date: transactionDate,
             );
 
-        setState(() {
-          _remainingBalance -= parsedAmount;
-        });
-
         if (!mounted) return;
         final categoryBudgets = ref.read(budgetLimitsProvider);
         if (categoryBudgets.containsKey(category)) {
@@ -1883,13 +1882,59 @@ ${dataReport.toString()}
                                     fontSize: 12,
                                   ),
                                 ),
-                                Text(
-                                  '$currencySymbol${convertedMonthlyCap.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
+                                Row(
+                                  children: [
+                                    Text(
+                                      '$currencySymbol${convertedMonthlyCap.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, color: Colors.white70, size: 16),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      onPressed: () {
+                                        final controller = TextEditingController(
+                                          text: convertedMonthlyCap.toStringAsFixed(0),
+                                        );
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: const Text('Update Monthly Income'),
+                                            content: TextField(
+                                              controller: controller,
+                                              keyboardType: TextInputType.number,
+                                              decoration: InputDecoration(
+                                                labelText: 'Monthly Income ($currencySymbol)',
+                                                border: const OutlineInputBorder(),
+                                              ),
+                                            ),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(context),
+                                                child: const Text('Cancel'),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: () {
+                                                  final val = double.tryParse(controller.text);
+                                                  if (val != null && val > 0) {
+                                                    final inrVal = _convertToInr(val, currencyCode);
+                                                    ref.read(monthlyBudgetCapProvider.notifier).updateBudgetCap(inrVal);
+                                                    Navigator.pop(context);
+                                                  }
+                                                },
+                                                child: const Text('Update'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
@@ -2833,13 +2878,14 @@ Question: $text
 
       double totalExpenses = currentTransactions.fold(
         0.0,
-        (sum, item) => sum + item["amount"],
+        (sum, item) => sum + (item["amount"] as num).toDouble(),
       );
-      double dynamicBalance = 50000.00 - totalExpenses;
+      final monthlyBudgetCap = ref.read(monthlyBudgetCapProvider);
+      double dynamicBalance = monthlyBudgetCap - totalExpenses;
 
       String transactionContext =
           "You are a helpful financial assistant app. Here is the user's current live transaction data:\n";
-      transactionContext += "Total Income base: ₹50,000.00\n";
+      transactionContext += "Total Income base: ₹${monthlyBudgetCap.toStringAsFixed(2)}\n";
       transactionContext +=
           "Current Calculated Balance: ₹${dynamicBalance.toStringAsFixed(2)}\n";
       transactionContext +=
