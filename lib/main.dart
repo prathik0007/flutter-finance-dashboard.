@@ -26,16 +26,29 @@ void main() async {
   runApp(const ProviderScope(child: FinanceApp()));
 }
 
-class FinanceApp extends StatelessWidget {
+class FinanceApp extends ConsumerWidget {
   const FinanceApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDarkMode = ref.watch(themeProvider);
+
     return MaterialApp(
-      title: 'AI Finance Tracker',
+      title: 'SmartLedger AI',
       debugShowCheckedModeBanner: false,
+      themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.teal,
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.teal,
+          brightness: Brightness.dark,
+        ),
         useMaterial3: true,
       ),
       home: const AuthWrapper(),
@@ -115,7 +128,7 @@ class _AuthScreenState extends State<AuthScreen> {
               isLogin ? "Welcome Back" : "Create Account",
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: Colors.teal,
+                color: Theme.of(context).colorScheme.primary,
               ),
             ),
             const SizedBox(height: 32),
@@ -138,8 +151,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 onPressed: _submit,
                 style: ElevatedButton.styleFrom(
                   minimumSize: const Size.fromHeight(50),
-                  backgroundColor: Colors.teal,
-                  foregroundColor: Colors.white,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                 ),
                 child: Text(isLogin ? "Sign In" : "Sign Up"),
               ),
@@ -417,6 +430,29 @@ final currencyPreferenceProvider =
       return CurrencyPreferenceNotifier();
     });
 
+class ThemeNotifier extends Notifier<bool> {
+  static const String _themeKey = 'isDarkMode';
+
+  @override
+  bool build() {
+    _loadTheme();
+    return false;
+  }
+
+  Future<void> _loadTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    state = prefs.getBool(_themeKey) ?? false;
+  }
+
+  Future<void> toggleTheme(bool value) async {
+    state = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_themeKey, value);
+  }
+}
+
+final themeProvider = NotifierProvider<ThemeNotifier, bool>(ThemeNotifier.new);
+
 const Map<String, double> _defaultCategoryBudgets = {
   'Food': 5000.0,
   'Café': 2000.0,
@@ -557,6 +593,72 @@ final monthlyBudgetCapProvider =
       return MonthlyBudgetCapNotifier();
     });
 
+class BankBalanceNotifier extends Notifier<double> {
+  static const String _savedBankBalanceKey = 'saved_bank_balance';
+  bool _hasHydrated = false;
+  final FirestoreService _firestoreService = FirestoreService();
+
+  @override
+  double build() {
+    _loadDataFromLocal();
+    _listenToFirestore();
+    return 0.0;
+  }
+
+  void _listenToFirestore() {
+    _firestoreService.getBankBalanceStream().listen((balance) {
+      if (balance != null) {
+        state = balance;
+        _saveToLocalOnly(balance);
+      }
+    });
+  }
+
+  Future<void> updateBalance(double newBalance) async {
+    state = newBalance;
+    await _saveDataToLocal();
+    await _firestoreService.updateBankBalance(newBalance);
+  }
+
+  Future<void> _saveToLocalOnly(double balance) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_savedBankBalanceKey, balance);
+    } catch (e) {
+      debugPrint('Save local balance error: $e');
+    }
+  }
+
+  Future<void> _saveDataToLocal() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_savedBankBalanceKey, state);
+      await ref.read(transactionProvider.notifier).persistDataToLocal();
+    } catch (e) {
+      debugPrint('Save bank balance error: $e');
+    }
+  }
+
+  Future<void> _loadDataFromLocal() async {
+    if (_hasHydrated) return;
+    _hasHydrated = true;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getDouble(_savedBankBalanceKey);
+      if (saved != null) {
+        state = saved;
+      }
+    } catch (e) {
+      debugPrint('Load bank balance error: $e');
+    }
+  }
+}
+
+final bankBalanceProvider = NotifierProvider<BankBalanceNotifier, double>(() {
+  return BankBalanceNotifier();
+});
+
 String get _stableApiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
 
 // --- MAIN NAVIGATION HOST ---
@@ -592,20 +694,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             _currentIndex = index;
           });
         },
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard, color: Colors.teal),
+            icon: const Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard, color: Theme.of(context).colorScheme.primary),
             label: 'Dashboard',
           ),
           NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble, color: Colors.teal),
+            icon: const Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble, color: Theme.of(context).colorScheme.primary),
             label: 'AI Chat',
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings, color: Colors.teal),
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings, color: Theme.of(context).colorScheme.primary),
             label: 'Settings',
           ),
         ],
@@ -626,12 +728,13 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _searchController = TextEditingController();
+
+  String get currencySymbol => _currencySymbol(ref.read(currencyPreferenceProvider));
   String _transactionSearchQuery = '';
   String _selectedCategoryFilter = 'All';
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
   String _voiceWords = "";
-  bool isDarkMode = false;
   String aiCoachInsight =
       "Tap the refresh icon to get custom financial insights from Gemini.";
   bool isAiLoading = false;
@@ -670,15 +773,99 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     return _currencySymbols[currencyCode] ?? '₹';
   }
 
-  void _recordTransaction(String merchant, double amount, {String? category}) {
-    _firestoreService.addTransaction(merchant, amount, category ?? 'Misc');
+  void _recordTransaction(String merchant, double amount, {String? category, bool isIncome = false}) {
+    _firestoreService.addTransaction(merchant, amount, category ?? 'Misc', isIncome: isIncome);
+  }
+
+  void _showSmartPasteDialog() {
+    final textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Smart Paste (SMS)'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Paste your bank SMS here and AI will parse it.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: textController,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: 'e.g. Rs 500.00 spent at STARBUCKS...',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              if (textController.text.isNotEmpty) {
+                parseAndAddVoiceTransaction(textController.text);
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Parse'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActions() {
+    final templates = [
+      {'label': 'Salary', 'icon': Icons.account_balance_wallet_rounded, 'color': Colors.green, 'income': true},
+      {'label': 'Rent', 'icon': Icons.home_rounded, 'color': Colors.red, 'amount': 15000.0, 'cat': 'Bills'},
+      {'label': 'Starbucks', 'icon': Icons.coffee_rounded, 'color': Colors.brown, 'amount': 250.0, 'cat': 'Café'},
+      {'label': 'Zomato', 'icon': Icons.fastfood_rounded, 'color': Colors.orange, 'amount': 450.0, 'cat': 'Food'},
+    ];
+
+    return SizedBox(
+      height: 90,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: templates.length,
+        itemBuilder: (context, index) {
+          final t = templates[index];
+          return Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: GestureDetector(
+              onTap: () {
+                if (t['income'] == true) {
+                  _showAddTransactionDialog(isIncome: true);
+                } else {
+                  _recordTransaction(
+                    t['label'] as String,
+                    t['amount'] as double,
+                    category: t['cat'] as String?,
+                  );
+                }
+              },
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 26,
+                    backgroundColor: (t['color'] as Color).withValues(alpha: 0.15),
+                    child: Icon(t['icon'] as IconData, color: t['color'] as Color),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(t['label'] as String, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
   void initState() {
     super.initState();
     _hydrateTransactionsOnStartup();
-    _loadThemePreference();
     _searchController.addListener(() {
       final currentQuery = _searchController.text;
       if (_transactionSearchQuery == currentQuery || !mounted) return;
@@ -690,22 +877,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   Future<void> _hydrateTransactionsOnStartup() async {
     await ref.read(transactionProvider.notifier).hydrateFromLocal();
-  }
-
-  Future<void> _loadThemePreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      isDarkMode = prefs.getBool('isDarkMode') ?? false;
-    });
-  }
-
-  Future<void> _toggleTheme(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      isDarkMode = value;
-    });
-    await prefs.setBool('isDarkMode', value);
   }
 
   @override
@@ -944,7 +1115,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
   }
 
-  Widget _buildExpenseTrendChart(Color cardColor, Color textColor) {
+  Widget _buildExpenseTrendChart(Color cardColor, Color textColor, bool isDarkMode) {
     return Card(
       color: cardColor,
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -1031,6 +1202,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     Color textColor,
     Map<String, double> categoryBudgets,
     String currencyCode,
+    bool isDarkMode,
   ) {
     final Map<String, double> spentByCategory = {};
     double totalSpent = 0.0;
@@ -1070,12 +1242,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         : Icons.show_chart_rounded;
     final Color accentColor = nearLimit
         ? (isDarkMode ? Colors.orangeAccent : Colors.deepOrange)
-        : (isDarkMode ? Colors.tealAccent : Colors.teal);
+        : Theme.of(context).colorScheme.primary;
 
     final String insightText = allUnderHalf
         ? '🎉 Great job, Prathik! You are managing your budget excellently this week.'
         : nearLimit
         ? '💡 Tip: Your spending is highest in $topCategory this month. Consider slowing down here!'
+        : '💡 Insight: $topCategory is your most active spend category right now. Keep an eye on it as your total budget usage reaches ${(overallRatio * 100).toStringAsFixed(0)}%.';
         : '💡 Insight: $topCategory is your most active spend category right now. Keep an eye on it as your total budget usage reaches ${(overallRatio * 100).toStringAsFixed(0)}%.';
 
     return Card(
@@ -1113,7 +1286,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               style: TextStyle(
                 fontSize: 14,
                 height: 1.45,
-                color: isDarkMode ? Colors.grey[300] : Colors.grey[800],
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 10),
@@ -1144,6 +1317,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     String category,
     double budget,
     String currencyCode,
+    bool isDarkMode,
   ) {
     final spent = _getCategoryTotal(category);
     final percent = budget > 0 ? (spent / budget) : 0.0;
@@ -1282,7 +1456,7 @@ ${dataReport.toString()}
     }
   }
 
-  Widget _buildAICoachCard(Color cardColor, Color textColor) {
+  Widget _buildAICoachCard(Color cardColor, Color textColor, bool isDarkMode) {
     return Card(
       color: cardColor,
       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -1293,8 +1467,8 @@ ${dataReport.toString()}
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
             colors: isDarkMode
-                ? [Colors.teal[900]!, Colors.grey[850]!]
-                : [Colors.teal[50]!, Colors.white],
+                ? [Theme.of(context).colorScheme.primaryContainer, Theme.of(context).cardColor]
+                : [Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3), Colors.white],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -1310,7 +1484,7 @@ ${dataReport.toString()}
                   children: [
                     Icon(
                       Icons.psychology_rounded,
-                      color: isDarkMode ? Colors.tealAccent : Colors.teal,
+                      color: Theme.of(context).colorScheme.primary,
                       size: 28,
                     ),
                     const SizedBox(width: 8),
@@ -1319,24 +1493,24 @@ ${dataReport.toString()}
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
-                        color: textColor,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                   ],
                 ),
                 isAiLoading
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.teal,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                       )
                     : IconButton(
-                        icon: const Icon(
+                        icon: Icon(
                           Icons.refresh_rounded,
-                          color: Colors.teal,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                         onPressed: _fetchAICoachInsight,
                       ),
@@ -1351,7 +1525,7 @@ ${dataReport.toString()}
                   fontSize: 14,
                   fontStyle: FontStyle.italic,
                   height: 1.4,
-                  color: isDarkMode ? Colors.grey[300] : Colors.grey[800],
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
@@ -1626,24 +1800,24 @@ ${dataReport.toString()}
     html.Url.revokeObjectUrl(url);
   }
 
-  void _showAddTransactionDialog() {
+  void _showAddTransactionDialog({bool isIncome = false}) {
     final merchantController = TextEditingController();
     final amountController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Add New Expense'),
+        title: Text(isIncome ? 'Add New Income' : 'Add New Expense'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: merchantController,
-              decoration: const InputDecoration(labelText: 'Merchant Name'),
+              decoration: const InputDecoration(labelText: 'Source/Merchant'),
             ),
             TextField(
               controller: amountController,
-              decoration: const InputDecoration(labelText: 'Amount (₹)'),
+              decoration: InputDecoration(labelText: 'Amount ($currencySymbol)'),
               keyboardType: TextInputType.number,
             ),
           ],
@@ -1658,7 +1832,7 @@ ${dataReport.toString()}
               if (merchantController.text.isNotEmpty &&
                   amountController.text.isNotEmpty) {
                 final amt = double.tryParse(amountController.text) ?? 0.0;
-                _recordTransaction(merchantController.text, amt);
+                _recordTransaction(merchantController.text, amt, isIncome: isIncome);
                 Navigator.pop(ctx);
               }
             },
@@ -1734,9 +1908,11 @@ ${dataReport.toString()}
   Widget build(BuildContext context) {
     final categoryBudgets = ref.watch(budgetLimitsProvider);
     final monthlyBudgetCap = ref.watch(monthlyBudgetCapProvider);
+    final bankBalance = ref.watch(bankBalanceProvider);
     final currencyCode = ref.watch(currencyPreferenceProvider);
     final currencySymbol = _currencySymbol(currencyCode);
 
+    bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final cardColor = isDarkMode ? Colors.grey[850]! : Colors.white;
     final textColor = isDarkMode ? Colors.white : Colors.black87;
 
@@ -1753,58 +1929,55 @@ ${dataReport.toString()}
           'amount': tx.amount,
           'category': tx.category,
           'date': tx.date.toString(),
+          'isIncome': tx.isIncome,
         }).toList() ?? [];
 
         final filteredTransactions = _getFilteredTransactions(transactions);
         final availableCategories = _getAvailableCategories(transactions);
-        double totalExpenses = transactions.fold(
-          0.0,
-          (sum, item) => sum + (item["amount"] as num).toDouble(),
-        );
-        double currentBalance = monthlyBudgetCap - totalExpenses;
+        double totalExpenses = 0.0;
+        double totalIncome = 0.0;
+
+        for (var tx in transactions) {
+          final amt = (tx['amount'] as num).toDouble();
+          if (tx['isIncome'] == true) {
+            totalIncome += amt;
+          } else {
+            totalExpenses += amt;
+          }
+        }
+
+        double currentBalance = (bankBalance + totalIncome) - totalExpenses;
         final convertedCurrentBalance = _convertFromInr(
           currentBalance,
           currencyCode,
         );
         final convertedMonthlyCap = _convertFromInr(monthlyBudgetCap, currencyCode);
         final convertedTotalExpenses = _convertFromInr(totalExpenses, currencyCode);
+        final convertedTotalIncome = _convertFromInr(totalIncome, currencyCode);
+        final convertedBankBalance = _convertFromInr(bankBalance, currencyCode);
 
-        return MaterialApp(
-          debugShowCheckedModeBanner: false,
-          themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          theme: ThemeData(
-            brightness: Brightness.light,
-            primarySwatch: Colors.teal,
-            scaffoldBackgroundColor: Colors.grey[50],
-          ),
-          darkTheme: ThemeData(
-            brightness: Brightness.dark,
-            primarySwatch: Colors.teal,
-            scaffoldBackgroundColor: Colors.grey[900],
-          ),
-          home: Scaffold(
-            appBar: AppBar(
-              title: const Text(
-                'AI Finance Dashboard',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              backgroundColor: isDarkMode ? Colors.teal[800] : Colors.teal,
-              centerTitle: true,
-              actions: [
-                Icon(isDarkMode ? Icons.dark_mode : Icons.light_mode),
-                Switch(
-                  value: isDarkMode,
-                  onChanged: _toggleTheme,
-                  activeThumbColor: Colors.tealAccent,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.logout),
-                  tooltip: 'Logout',
-                  onPressed: () => FirebaseAuth.instance.signOut(),
-                ),
-              ],
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text(
+              'AI Finance Dashboard',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            body: SingleChildScrollView(
+            centerTitle: true,
+            actions: [
+              Icon(isDarkMode ? Icons.dark_mode : Icons.light_mode),
+              Switch(
+                value: isDarkMode,
+                onChanged: (val) => ref.read(themeProvider.notifier).toggleTheme(val),
+                activeThumbColor: Colors.tealAccent,
+              ),
+              IconButton(
+                icon: const Icon(Icons.logout),
+                tooltip: 'Logout',
+                onPressed: () => FirebaseAuth.instance.signOut(),
+              ),
+            ],
+          ),
+          body: SingleChildScrollView(
               child: Column(
             children: [
               Container(
@@ -1832,9 +2005,54 @@ ${dataReport.toString()}
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Total Balance',
-                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                        Row(
+                          children: [
+                            const Text(
+                              'Total Balance',
+                              style: TextStyle(color: Colors.white70, fontSize: 16),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white70, size: 18),
+                              tooltip: 'Update Bank Balance',
+                              onPressed: () {
+                                final controller = TextEditingController(
+                                  text: convertedBankBalance.toStringAsFixed(0),
+                                );
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Set Current Bank Balance'),
+                                    content: TextField(
+                                      controller: controller,
+                                      keyboardType: TextInputType.number,
+                                      decoration: InputDecoration(
+                                        labelText: 'Bank Balance ($currencySymbol)',
+                                        border: const OutlineInputBorder(),
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          final val = double.tryParse(controller.text);
+                                          if (val != null) {
+                                            final inrVal = _convertToInr(val, currencyCode);
+                                            ref.read(bankBalanceProvider.notifier).updateBalance(inrVal);
+                                            Navigator.pop(context);
+                                          }
+                                        },
+                                        child: const Text('Set'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
                         ),
                         IconButton(
                           icon: Icon(
@@ -1885,7 +2103,7 @@ ${dataReport.toString()}
                                 Row(
                                   children: [
                                     Text(
-                                      '$currencySymbol${convertedMonthlyCap.toStringAsFixed(0)}',
+                                      '$currencySymbol${(convertedMonthlyCap + convertedTotalIncome).toStringAsFixed(0)}',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontWeight: FontWeight.bold,
@@ -1979,7 +2197,18 @@ ${dataReport.toString()}
                   ],
                 ),
               ),
-              _buildAICoachCard(cardColor, textColor),
+              _buildAICoachCard(cardColor, textColor, isDarkMode),
+              const Padding(
+                padding: EdgeInsets.only(left: 16.0, top: 12, bottom: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Quick Templates',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
+                  ),
+                ),
+              ),
+              _buildQuickActions(),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16.0,
@@ -2009,12 +2238,13 @@ ${dataReport.toString()}
                 ),
               ),
               const SizedBox(height: 8),
-              _buildExpenseTrendChart(cardColor, textColor),
+              _buildExpenseTrendChart(cardColor, textColor, isDarkMode),
               _buildAnalyticsInsightCard(
                 cardColor,
                 textColor,
                 categoryBudgets,
                 currencyCode,
+                isDarkMode,
               ),
               Card(
                 margin: const EdgeInsets.all(16.0),
@@ -2047,6 +2277,7 @@ ${dataReport.toString()}
                           entry.key,
                           entry.value,
                           currencyCode,
+                          isDarkMode,
                         );
                       }),
                     ],
@@ -2114,7 +2345,7 @@ ${dataReport.toString()}
                             },
                           ),
                     filled: true,
-                    fillColor: isDarkMode ? Colors.grey[850] : Colors.white,
+                    fillColor: Theme.of(context).cardColor,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide.none,
@@ -2122,15 +2353,13 @@ ${dataReport.toString()}
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide(
-                        color: isDarkMode
-                            ? Colors.grey.shade700
-                            : Colors.grey.shade300,
+                        color: Theme.of(context).dividerColor,
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(
-                        color: Colors.teal,
+                      borderSide: BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
                         width: 1.4,
                       ),
                     ),
@@ -2196,11 +2425,11 @@ ${dataReport.toString()}
                         ),
                       ),
                       trailing: Text(
-                        '- $currencySymbol${convertedAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(
+                        '${tx['isIncome'] == true ? '+' : '-'} $currencySymbol${convertedAmount.toStringAsFixed(2)}',
+                        style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: Colors.redAccent,
+                          color: tx['isIncome'] == true ? Colors.greenAccent : Colors.redAccent,
                         ),
                       ),
                     ),
@@ -2242,6 +2471,13 @@ ${dataReport.toString()}
             ),
             const SizedBox(height: 12),
             FloatingActionButton(
+              heroTag: 'smartPaste',
+              onPressed: _showSmartPasteDialog,
+              backgroundColor: Colors.orange,
+              child: const Icon(Icons.paste_rounded, color: Colors.white),
+            ),
+            const SizedBox(height: 12),
+            FloatingActionButton(
               heroTag: 'addTransaction',
               onPressed: _showAddTransactionDialog,
               backgroundColor: Colors.teal,
@@ -2249,11 +2485,10 @@ ${dataReport.toString()}
             ),
           ],
         ),
-      ),
-    );
-  },
-);
-  }
+      );
+    },
+  );
+}
 }
 
 // --- TAB 3: SETTINGS / PROFILE SCREEN ---
@@ -2584,21 +2819,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       appBar: AppBar(
         title: const Text('Settings & Profile'),
         centerTitle: true,
-        backgroundColor: Colors.teal,
       ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildProfileHeader(),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Text(
                 'Preferred Currency',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.teal,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
             ),
@@ -2630,14 +2864,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Text(
                 'Monthly Budget Cap',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.teal,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
             ),
@@ -2666,14 +2900,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
               child: Text(
                 'Category Limits',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: Colors.teal,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
             ),
@@ -2881,11 +3115,15 @@ Question: $text
         (sum, item) => sum + (item["amount"] as num).toDouble(),
       );
       final monthlyBudgetCap = ref.read(monthlyBudgetCapProvider);
-      double dynamicBalance = monthlyBudgetCap - totalExpenses;
+      final bankBalance = ref.read(bankBalanceProvider);
+      double dynamicBalance = bankBalance - totalExpenses;
 
       String transactionContext =
           "You are a helpful financial assistant app. Here is the user's current live transaction data:\n";
       transactionContext += "Total Income base: ₹${monthlyBudgetCap.toStringAsFixed(2)}\n";
+      transactionContext += "Manual Bank Balance base: ₹${bankBalance.toStringAsFixed(2)}\n";
+      transactionContext +=
+          "Current Calculated Available Balance: ₹${dynamicBalance.toStringAsFixed(2)}\n";
       transactionContext +=
           "Current Calculated Balance: ₹${dynamicBalance.toStringAsFixed(2)}\n";
       transactionContext +=
@@ -2953,13 +3191,11 @@ Question: $text
     final transactions = ref.watch(transactionProvider);
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: const Text(
           'Gemini Financial Assistant',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: Colors.teal.shade100,
         centerTitle: true,
         actions: [
           // 🟢 INSERT THE CLEAR CHAT BUTTON HERE:
@@ -3011,7 +3247,9 @@ Question: $text
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: isUser ? Colors.teal : Colors.grey.shade200,
+                      color: isUser
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(16),
                         topRight: const Radius.circular(16),
@@ -3029,7 +3267,9 @@ Question: $text
                     child: Text(
                       msg["text"]!,
                       style: TextStyle(
-                        color: isUser ? Colors.white : Colors.black87,
+                        color: isUser
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
                         fontSize: 15,
                       ),
                     ),
@@ -3057,10 +3297,10 @@ Question: $text
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: Theme.of(context).cardColor,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.grey.withValues(alpha: 0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 4,
                   offset: const Offset(0, -2),
                 ),
@@ -3079,7 +3319,7 @@ Question: $text
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.grey.shade100,
+                      fillColor: Theme.of(context).scaffoldBackgroundColor,
                       contentPadding: const EdgeInsets.symmetric(
                         horizontal: 16,
                         vertical: 10,
@@ -3092,7 +3332,9 @@ Question: $text
                 IconButton(
                   icon: Icon(
                     Icons.send,
-                    color: _isLoading ? Colors.grey : Colors.teal,
+                    color: _isLoading
+                        ? Theme.of(context).disabledColor
+                        : Theme.of(context).colorScheme.primary,
                   ),
                   onPressed: _isLoading
                       ? null

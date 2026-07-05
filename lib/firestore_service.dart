@@ -8,6 +8,8 @@ class TransactionModel {
   final String category;
   final DateTime date;
   final String userId;
+  final bool isIncome;
+  final bool isRecurring;
 
   TransactionModel({
     required this.id,
@@ -16,6 +18,8 @@ class TransactionModel {
     required this.category,
     required this.date,
     required this.userId,
+    this.isIncome = false,
+    this.isRecurring = false,
   });
 
   factory TransactionModel.fromFirestore(
@@ -30,6 +34,8 @@ class TransactionModel {
       category: data?['category'] ?? 'Misc',
       date: (data?['date'] as Timestamp?)?.toDate() ?? DateTime.now(),
       userId: data?['userId'] ?? '',
+      isIncome: data?['isIncome'] ?? false,
+      isRecurring: data?['isRecurring'] ?? false,
     );
   }
 
@@ -40,6 +46,8 @@ class TransactionModel {
       "category": category,
       "date": Timestamp.fromDate(date),
       "userId": userId,
+      "isIncome": isIncome,
+      "isRecurring": isRecurring,
     };
   }
 }
@@ -56,7 +64,13 @@ class FirestoreService {
           );
 
   // Function to add a new transaction tied to the current user
-  Future<void> addTransaction(String merchant, double amount, String category) async {
+  Future<void> addTransaction(
+    String merchant,
+    double amount,
+    String category, {
+    bool isIncome = false,
+    bool isRecurring = false,
+  }) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception("User must be logged in to save data.");
 
@@ -67,6 +81,8 @@ class FirestoreService {
       category: category,
       date: DateTime.now(),
       userId: user.uid,
+      isIncome: isIncome,
+      isRecurring: isRecurring,
     );
 
     await _transactionsRef.add(newTx);
@@ -104,6 +120,27 @@ class FirestoreService {
       if (!doc.exists) return null;
       final data = doc.data();
       return (data?['monthlyIncome'] as num?)?.toDouble();
+    });
+  }
+
+  Future<void> updateBankBalance(double balance) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    await _db.collection('users').doc(user.uid).set({
+      'bankBalance': balance,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Stream<double?> getBankBalanceStream() {
+    final user = _auth.currentUser;
+    if (user == null) return Stream.value(null);
+
+    return _db.collection('users').doc(user.uid).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      final data = doc.data();
+      return (data?['bankBalance'] as num?)?.toDouble();
     });
   }
 }
