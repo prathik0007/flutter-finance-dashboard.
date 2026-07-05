@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "642119223126",
+    "project_id": "smartledger-ai-beac1",
+    "storage_bucket": "smartledger-ai-beac1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:642119223126:android:1f28dcaf8b8074f75c78f7",
+        "android_client_info": {
+          "package_name": "com.example.my_finance"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWCP-Yi9UjKBK9vVstAMAdYo93azl410w"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

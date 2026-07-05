@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,10 +13,12 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:universal_html/html.dart' as html;
 import 'database_service.dart';
 import 'cloud_sync_service.dart';
+import 'firestore_service.dart';
 // Needed to convert your list into a JSON string for storage
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   await dotenv.load(fileName: ".env");
   runApp(const ProviderScope(child: FinanceApp()));
 }
@@ -31,7 +35,123 @@ class FinanceApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: const MainNavigationScreen(),
+      home: const AuthWrapper(),
+    );
+  }
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (snapshot.hasData) {
+          return const MainNavigationScreen();
+        }
+        return const AuthScreen();
+      },
+    );
+  }
+}
+
+class AuthScreen extends StatefulWidget {
+  const AuthScreen({super.key});
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  bool isLogin = true;
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool isLoading = false;
+
+  Future<void> _submit() async {
+    setState(() => isLoading = true);
+    try {
+      if (isLogin) {
+        await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      } else {
+        await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              isLogin ? "Welcome Back" : "Create Account",
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.teal,
+              ),
+            ),
+            const SizedBox(height: 32),
+            TextField(
+              controller: _emailController,
+              decoration: const InputDecoration(labelText: 'Email'),
+              keyboardType: TextInputType.emailAddress,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _passwordController,
+              decoration: const InputDecoration(labelText: 'Password'),
+              obscureText: true,
+            ),
+            const SizedBox(height: 32),
+            if (isLoading)
+              const CircularProgressIndicator()
+            else ...[
+              ElevatedButton(
+                onPressed: _submit,
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(50),
+                  backgroundColor: Colors.teal,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(isLogin ? "Sign In" : "Sign Up"),
+              ),
+              TextButton(
+                onPressed: () => setState(() => isLogin = !isLogin),
+                child: Text(
+                  isLogin
+                      ? "Don't have an account? Sign Up"
+                      : "Already have an account? Sign In",
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -480,6 +600,7 @@ class TransactionsScreen extends ConsumerStatefulWidget {
 }
 
 class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
   double _remainingBalance = 50000.00;
   final TextEditingController _searchController = TextEditingController();
   String _transactionSearchQuery = '';
@@ -488,9 +609,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   bool _isListening = false;
   String _voiceWords = "";
   bool isDarkMode = false;
-  bool isLocked = true;
-  final TextEditingController _pinController = TextEditingController();
-  static const String correctPin = "1234";
   String aiCoachInsight =
       "Tap the refresh icon to get custom financial insights from Gemini.";
   bool isAiLoading = false;
@@ -525,15 +643,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 
   void _recordTransaction(String merchant, double amount, {String? category}) {
-    ref
-        .read(transactionProvider.notifier)
-        .addTransaction(merchant, amount, category: category);
-
-    if (!mounted) return;
-
-    setState(() {
-      _remainingBalance -= amount;
-    });
+    _firestoreService.addTransaction(merchant, amount, category ?? 'Misc');
   }
 
   @override
@@ -595,7 +705,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
-    _pinController.dispose();
     super.dispose();
   }
 
@@ -1619,137 +1728,82 @@ ${dataReport.toString()}
     }
   }
 
-  Widget _buildLockScreen() {
-    return Scaffold(
-      backgroundColor: isDarkMode ? Colors.grey[900] : Colors.grey[100],
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.lock_outline_rounded,
-                size: 80,
-                color: isDarkMode ? Colors.tealAccent : Colors.teal,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                "Dashboard Locked",
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: isDarkMode ? Colors.white : Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                "Enter PIN to view your balances",
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: 200,
-                child: TextField(
-                  controller: _pinController,
-                  obscureText: true,
-                  keyboardType: TextInputType.number,
-                  maxLength: 4,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    letterSpacing: 8,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  decoration: InputDecoration(
-                    counterText: "",
-                    filled: true,
-                    fillColor: isDarkMode ? Colors.grey[800] : Colors.white,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onChanged: (val) {
-                    if (val == correctPin) {
-                      setState(() {
-                        isLocked = false;
-                      });
-                      _pinController.clear();
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (isLocked) {
-      return _buildLockScreen();
-    }
-
-    final transactions = ref.watch(transactionProvider);
     final categoryBudgets = ref.watch(budgetLimitsProvider);
     final monthlyBudgetCap = ref.watch(monthlyBudgetCapProvider);
     final currencyCode = ref.watch(currencyPreferenceProvider);
     final currencySymbol = _currencySymbol(currencyCode);
-    final filteredTransactions = _getFilteredTransactions(transactions);
-    final availableCategories = _getAvailableCategories(transactions);
-    double totalExpenses = transactions.fold(
-      0.0,
-      (sum, item) => sum + item["amount"],
-    );
-    double currentBalance = monthlyBudgetCap - totalExpenses;
-    final convertedCurrentBalance = _convertFromInr(
-      currentBalance,
-      currencyCode,
-    );
-    final convertedMonthlyCap = _convertFromInr(monthlyBudgetCap, currencyCode);
-    final convertedTotalExpenses = _convertFromInr(totalExpenses, currencyCode);
+
     final cardColor = isDarkMode ? Colors.grey[850]! : Colors.white;
     final textColor = isDarkMode ? Colors.white : Colors.black87;
 
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
-      theme: ThemeData(
-        brightness: Brightness.light,
-        primarySwatch: Colors.teal,
-        scaffoldBackgroundColor: Colors.grey[50],
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        primarySwatch: Colors.teal,
-        scaffoldBackgroundColor: Colors.grey[900],
-      ),
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text(
-            'AI Finance Dashboard',
-            style: TextStyle(fontWeight: FontWeight.bold),
+    return StreamBuilder<List<TransactionModel>>(
+      stream: _firestoreService.getTransactionsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        final transactions = snapshot.data?.map((tx) => {
+          'id': tx.id,
+          'merchant': tx.merchant,
+          'amount': tx.amount,
+          'category': tx.category,
+          'date': tx.date.toString(),
+        }).toList() ?? [];
+
+        final filteredTransactions = _getFilteredTransactions(transactions);
+        final availableCategories = _getAvailableCategories(transactions);
+        double totalExpenses = transactions.fold(
+          0.0,
+          (sum, item) => sum + (item["amount"] as num).toDouble(),
+        );
+        double currentBalance = monthlyBudgetCap - totalExpenses;
+        final convertedCurrentBalance = _convertFromInr(
+          currentBalance,
+          currencyCode,
+        );
+        final convertedMonthlyCap = _convertFromInr(monthlyBudgetCap, currencyCode);
+        final convertedTotalExpenses = _convertFromInr(totalExpenses, currencyCode);
+
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          theme: ThemeData(
+            brightness: Brightness.light,
+            primarySwatch: Colors.teal,
+            scaffoldBackgroundColor: Colors.grey[50],
           ),
-          backgroundColor: isDarkMode ? Colors.teal[800] : Colors.teal,
-          centerTitle: true,
-          actions: [
-            Icon(isDarkMode ? Icons.dark_mode : Icons.light_mode),
-            Switch(
-              value: isDarkMode,
-              onChanged: _toggleTheme,
-              activeThumbColor: Colors.tealAccent,
+          darkTheme: ThemeData(
+            brightness: Brightness.dark,
+            primarySwatch: Colors.teal,
+            scaffoldBackgroundColor: Colors.grey[900],
+          ),
+          home: Scaffold(
+            appBar: AppBar(
+              title: const Text(
+                'AI Finance Dashboard',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              backgroundColor: isDarkMode ? Colors.teal[800] : Colors.teal,
+              centerTitle: true,
+              actions: [
+                Icon(isDarkMode ? Icons.dark_mode : Icons.light_mode),
+                Switch(
+                  value: isDarkMode,
+                  onChanged: _toggleTheme,
+                  activeThumbColor: Colors.tealAccent,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.logout),
+                  tooltip: 'Logout',
+                  onPressed: () => FirebaseAuth.instance.signOut(),
+                ),
+              ],
             ),
-            IconButton(
-              icon: const Icon(Icons.power_settings_new),
-              tooltip: 'Lock Dashboard',
-              onPressed: () => setState(() => isLocked = true),
-            ),
-          ],
-        ),
-        body: SingleChildScrollView(
-          child: Column(
+            body: SingleChildScrollView(
+              child: Column(
             children: [
               Container(
                 width: double.infinity,
@@ -2149,6 +2203,8 @@ ${dataReport.toString()}
         ),
       ),
     );
+  },
+);
   }
 }
 

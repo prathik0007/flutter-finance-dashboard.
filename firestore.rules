@@ -1,0 +1,19 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // This matches the 'transactions' collection in your database
+    match /transactions/{transactionId} {
+
+      // 1. request.auth != null: Ensures the user is logged in.
+      // 2. request.auth.uid == resource.data.userId: Ensures the logged-in user
+      //    is the same person who owns the transaction document.
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+
+      // This allows users to create new entries as long as the document
+      // they are creating is tagged with their own unique userId.
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+  }
+}
